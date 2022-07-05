@@ -653,6 +653,8 @@ context
   assumes g_funcset: "g \<in> {0..1} \<rightarrow> {0..1}"
   assumes g_mono: "mono_on g {0..1}"
   assumes g_One: "g 1 = 1"
+
+  assumes F_neq_0: "F \<noteq> 0"
 begin
 
 definition "n \<equiv> card (Vs G)"
@@ -729,16 +731,15 @@ definition dual_sol :: "'a graph \<Rightarrow> real vec" where
     else 0
   )"
 
+lemma dim_primal_sol[simp]: "dim_vec (primal_sol M) = m"
+  by (simp add: primal_sol_def)
+
+lemma dim_dual_sol[simp]: "dim_vec (dual_sol M) = n"
+  by (simp add: dual_sol_def)
+
 lemma "e \<in> G \<Longrightarrow> primal_sol M $ (G_enum e) = 1 \<longleftrightarrow> e \<in> M"
   unfolding primal_sol_def
   by (auto simp add: countable_finite graph_abs_G.finite_E to_nat_on_less_card m_def)
-
-
-lemma "M \<subseteq> G \<Longrightarrow> primal_sol M \<bullet> (1\<^sub>v m) = card M"
-  apply (auto simp: scalar_prod_def m_def primal_sol_def)
-  apply (intro bij_betw_same_card[where f = "from_nat_into G"] bij_betwI[where g = G_enum])
-     apply (auto intro!: to_nat_on_less_card to_nat_on_from_nat_into_less simp: countable_finite graph_abs_G.finite_E in_mono)
-  done
 
 lemma n_sum: "n = card L + card R"
   using bipartite parts_minimal fin_L fin_R
@@ -796,8 +797,8 @@ lemma
   by (auto dest: bipartite_disjointD)
 
 lemma
-  shows Vs_inv_enum: "x \<in> Vs G \<Longrightarrow> Vs_enum_inv (Vs_enum x) = x"
-    and Vs_enum_inv: "i < n \<Longrightarrow> Vs_enum (Vs_enum_inv i) = i"
+  shows Vs_inv_enum[simp]: "x \<in> Vs G \<Longrightarrow> Vs_enum_inv (Vs_enum x) = x"
+    and Vs_enum_inv[simp]: "i < n \<Longrightarrow> Vs_enum (Vs_enum_inv i) = i"
   using fin_L fin_R
    apply (auto elim!: Vs_cases simp: Vs_enum_inv_def Vs_enum_def n_sum dest: L_enum_less_card intro!: from_nat_into)
   by (metis Un_iff Vs_cases add.right_neutral card.empty from_nat_into parts_minimal)
@@ -822,6 +823,157 @@ lemma Vs_enum_neqI: "v \<in> Vs G \<Longrightarrow> v' \<in> Vs G \<Longrightarr
 
 lemma G_enum_neqI: "e \<in> G \<Longrightarrow> e' \<in> G \<Longrightarrow> e \<noteq> e' \<Longrightarrow> G_enum e \<noteq> G_enum e'"
   by (simp add: countable_finite graph_abs_G.finite_E)
+
+lemma primal_dot_One_card: "M \<subseteq> G \<Longrightarrow> primal_sol M \<bullet> (1\<^sub>v m) = card M"
+  apply (auto simp: scalar_prod_def m_def primal_sol_def)
+  apply (intro bij_betw_same_card[where f = "from_nat_into G"] bij_betwI[where g = G_enum])
+     apply (auto intro!: to_nat_on_less_card to_nat_on_from_nat_into_less simp: countable_finite graph_abs_G.finite_E in_mono)
+  done
+
+lemma dual_dot_One_card:
+  assumes "M \<subseteq> G"
+  assumes "matching M"
+  shows "dual_sol M \<bullet> (1\<^sub>v n) = card M / F"
+proof -
+  from graph_abs_G.graph have "dual_sol M \<bullet> (1\<^sub>v n) = 
+    (\<Sum>i\<in>{0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> {i. i < card L}. g (Y (Vs_enum_inv i)) / F) +
+    (\<Sum>i\<in>{0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> - {i. i < card L}. (1 - g (Y (THE l. {l, Vs_enum_inv i} \<in> M))) / F)"
+    by (simp add: dual_sol_def scalar_prod_def sum.If_cases)
+
+  have L_sum_matching: "(\<Sum>i\<in>{0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> {i. i < card L}. g (Y (Vs_enum_inv i)) / F) =
+    (\<Sum>e\<in>M. g (Y (THE l. l \<in> L \<and> l \<in> e)) / F)"
+  proof (rule sum.reindex_bij_witness[where j = "\<lambda>i. (THE e. e \<in> M \<and> Vs_enum_inv i \<in> e)" and
+          i = "\<lambda>e. Vs_enum (THE l. l \<in> L \<and> l \<in> e)"])
+    fix i
+    assume i: "i \<in> {0..<local.n} \<inter> {i. local.Vs_enum_inv i \<in> Vs M} \<inter> {i. i < card L}"
+    then obtain e where e: "e \<in> M" "Vs_enum_inv i \<in> e" and i_less_n: "i < n"
+      by (auto elim: vs_member_elim)
+
+    with \<open>matching M\<close> have the_e: "(THE e. e \<in> M \<and> Vs_enum_inv i \<in> e) = e"
+      by (auto intro!: the_equality dest: matching_unique_match)
+
+    with e show "(THE e. e \<in> M \<and> local.Vs_enum_inv i \<in> e) \<in> M"
+      by blast
+
+    from bipartite e obtain l r where e': "e = {l,r}" "l \<in> L" "r \<in> R"
+      by (auto elim: bipartite_edgeE dest: bipartite_subgraph[OF _ \<open>M \<subseteq> G\<close>])
+
+    from i have "Vs_enum_inv i \<in> L"
+      by (auto intro: from_nat_into)
+
+    with bipartite e e' have the_l: "(THE l. l \<in> L \<and> l \<in> e) = Vs_enum_inv i"
+      by (auto dest: bipartite_disjointD)
+
+    with i_less_n show "Vs_enum (THE l. l \<in> L \<and> l \<in> (THE e. e \<in> M \<and> local.Vs_enum_inv i \<in> e)) = i"
+      by (auto simp: the_e the_l)
+
+    show "g (Y (THE l. l \<in> L \<and> l \<in> (THE e. e \<in> M \<and> Vs_enum_inv i \<in> e))) / F = g (Y (Vs_enum_inv i)) / F"
+      by (simp add: the_e the_l)
+  next
+    fix e
+    assume eM: "e \<in> M"
+
+    with bipartite obtain l r where e: "e = {l,r}" "l \<in> L" "r \<in> R"
+      by (auto elim: bipartite_edgeE dest: bipartite_subgraph[OF _ \<open>M \<subseteq> G\<close>])
+
+    with bipartite have the_l: "(THE l. l \<in> L \<and> l \<in> e) = l"
+      by (auto dest: bipartite_subgraph[OF _ \<open>M \<subseteq> G\<close>] bipartite_disjointD)
+
+    from eM e \<open>matching M\<close> have the_e: "(THE e. e \<in> M \<and> l \<in> e) = e"
+      apply (intro the_equality)
+       apply simp
+      by (meson insertCI matching_unique_match)
+
+    from parts_minimal \<open>l \<in> L\<close> have "l \<in> Vs G"
+      by blast
+
+    then show "(THE e'. e' \<in> M \<and> Vs_enum_inv (Vs_enum (THE l. l \<in> L \<and> l \<in> e)) \<in> e') = e"
+      by (simp add: the_l Vs_inv_enum the_e)
+
+    from \<open>l \<in> L\<close> show "Vs_enum (THE l. l \<in> L \<and> l \<in> e) \<in> {0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> {i. i < card L}"
+      apply (auto simp: the_l intro: L_enum_less_n L_enum_less_card)
+      apply (metis L_inv_enum Vs_enum_inv_def e(1) eM edges_are_Vs(1) fin_L to_nat_on_less_card)
+      done
+  qed
+
+  have R_sum_matching: "(\<Sum>i\<in>{0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> - {i. i < card L}. (1 - g (Y (THE l. {l, Vs_enum_inv i} \<in> M))) / F) =
+   (\<Sum>e\<in>M. (1 - g (Y (THE l. l \<in> L \<and> l \<in> e))) / F)"
+  proof (rule sum.reindex_bij_witness[where j = "\<lambda>i. (THE e. e \<in> M \<and> Vs_enum_inv i \<in> e)" and
+        i = "\<lambda>e. Vs_enum (THE r. r \<in> R \<and> r \<in> e)"])
+    fix i
+    assume i: "i \<in> {0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> - {i. i < card L}"
+
+    then obtain e where e: "e \<in> M" "Vs_enum_inv i \<in> e" and i_less_n: "i < n"
+      by (auto elim: vs_member_elim)
+
+    with \<open>matching M\<close> have the_e: "(THE e. e \<in> M \<and> Vs_enum_inv i \<in> e) = e"
+      by (auto intro!: the_equality dest: matching_unique_match)
+
+    with e show "(THE e. e \<in> M \<and> Vs_enum_inv i \<in> e) \<in> M"
+      by blast
+
+    from bipartite e obtain l r where e': "e = {l,r}" "l \<in> L" "r \<in> R"
+      by (auto elim: bipartite_edgeE dest: bipartite_subgraph[OF _ \<open>M \<subseteq> G\<close>])
+
+    with i have "Vs_enum_inv i \<in> R"
+      by (auto intro: from_nat_into)
+
+    with e' e parts_minimal have the_r: "(THE r. r \<in> R \<and> r \<in> e) = Vs_enum_inv i"
+      by (auto elim: Vs_cases)
+
+    from i_less_n show "Vs_enum (THE r. r \<in> R \<and> r \<in> (THE e. e \<in> M \<and> Vs_enum_inv i \<in> e)) = i"
+      by (simp add: the_e the_r)
+
+    from e e' bipartite have the_l: "(THE l. l \<in> L \<and> l \<in> e) = l"
+      by (intro the_equality)
+         (auto dest: bipartite_subgraph[OF _ \<open>M \<subseteq> G\<close>] bipartite_disjointD)
+
+    from e e' \<open>matching M\<close> have the_l': "(THE l. {l, local.Vs_enum_inv i} \<in> M) = l"
+      apply (intro the_equality)
+      using Vs_cases \<open>local.Vs_enum_inv i \<in> R\<close> assms(1) empty_iff apply blast
+      by (metis (no_types, lifting) Vs_cases \<open>local.Vs_enum_inv i \<in> R\<close> assms(1) edges_are_Vs(1) insertE singleton_iff subset_eq the_match)
+
+    show "(1 - g (Y (THE l. l \<in> L \<and> l \<in> (THE e. e \<in> M \<and> Vs_enum_inv i \<in> e)))) / F = (1 - g (Y (THE l. {l, Vs_enum_inv i} \<in> M))) / F"
+      by (simp add: the_e the_l the_l')
+  next
+    fix e
+    assume eM: "e \<in> M"
+
+    with bipartite obtain l r where e: "e = {l,r}" "l \<in> L" "r \<in> R" "l \<noteq> r"
+      by (auto elim: bipartite_edgeE dest: bipartite_subgraph[OF _ \<open>M \<subseteq> G\<close>])
+
+    with bipartite have the_r: "(THE r. r \<in> R \<and> r \<in> e) = r"
+      by (intro the_equality)
+         (auto dest: bipartite_disjointD)
+
+    from eM \<open>e = {l,r}\<close> \<open>matching M\<close> have the_e: "(THE e. e \<in> M \<and> r \<in> e) = e"
+      by (intro the_equality matching_unique_match)
+         auto
+
+    from \<open>r \<in> R\<close> have r_inv_enum: "Vs_enum_inv (Vs_enum r) = r"
+      by simp
+
+    then show "(THE e'. e' \<in> M \<and> Vs_enum_inv (Vs_enum (THE r. r \<in> R \<and> r \<in> e)) \<in> e') = e"
+      by (simp add: the_r the_e)
+
+    show "Vs_enum (THE r. r \<in> R \<and> r \<in> e) \<in> {0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> - {i. i < card L}"
+      apply (simp add: the_r r_inv_enum)
+      apply (intro conjI)
+      using L_enum_less_n R_enum_less_n Vs_enum_def e(3) apply presburger
+       apply (metis e(1) eM edges_are_Vs(2))
+      by (simp add: e(3))
+  qed
+
+  with graph_abs_G.graph L_sum_matching show ?thesis
+    by (auto simp: scalar_prod_def dual_sol_def n_def sum.If_cases simp flip: sum.distrib add_divide_distrib)
+qed
+
+lemma primal_is_dual_times_F:
+  assumes "M \<subseteq> G"
+  assumes "matching M"
+  shows "primal_sol M \<bullet> (1\<^sub>v m) = dual_sol M \<bullet> (1\<^sub>v n) * F"
+  using assms F_neq_0
+  by (auto simp: primal_dot_One_card dual_dot_One_card)
 
 lemma step_primal_dual_cases[case_names no_neighbor j_matched new_match]:
   fixes M j
@@ -852,6 +1004,45 @@ lemma dim_vec_step_dual[simp]: "dim_vec ((snd \<circ> snd) (step_primal_dual (M,
   by cases simp_all
 
 lemmas dim_vec_step_primal_dual[simp] = dim_vec_step_primal[simplified] dim_vec_step_dual[simplified]
+
+lemma dim_vec_ranking_primal[simp]: "dim_vec ((fst \<circ> snd) (ranking_primal_dual' (M,p,d) js)) = dim_vec p"
+proof (induction js arbitrary: M p d)
+  case (Cons j js)
+  let ?step = "step_primal_dual (M,p,d) j"
+
+  have "dim_vec ((fst \<circ> snd) (ranking_primal_dual' (fst ?step, (fst \<circ> snd) ?step, (snd \<circ> snd) ?step) js)) =
+    dim_vec ((fst \<circ> snd) ?step)"
+    by (intro Cons.IH)
+
+  also have "\<dots> = dim_vec p" by simp
+
+  finally show ?case
+    by (simp add: ranking_primal_dual_Cons)
+qed simp
+
+lemma dim_vec_ranking_dual[simp]: "dim_vec ((snd \<circ> snd) (ranking_primal_dual' (M,p,d) js)) = dim_vec d"
+proof (induction js arbitrary: M p d)
+  case (Cons j js)
+  let ?step = "step_primal_dual (M,p,d) j"
+
+  have "dim_vec ((snd \<circ> snd) (ranking_primal_dual' (fst ?step, (fst \<circ> snd) ?step, (snd \<circ> snd) ?step) js)) =
+    dim_vec ((snd \<circ> snd) ?step)"
+    by (intro Cons.IH)
+
+  also have "\<dots> = dim_vec d" by simp
+
+  finally show ?case
+    by (simp add: ranking_primal_dual_Cons)
+qed simp
+
+lemmas dim_vec_ranking_primal_dual[simp] = dim_vec_ranking_primal[simplified] dim_vec_ranking_dual[simplified]
+
+lemma
+  assumes "ranking_primal_dual' (M',p',d') js = (M,p,d)"
+  shows dim_vec_ranking_primal'[simp]: "dim_vec p = dim_vec p'"
+    and dim_vec_ranking_dual'[simp]: "dim_vec d = dim_vec d'"
+  using assms
+  by (metis dim_vec_ranking_primal_dual fst_conv snd_conv)+
 
 lemma step_primal_unmatched:
   assumes "step_primal_dual (M',p',d') j = (M,p,d)"
@@ -1392,6 +1583,120 @@ proof (induction js arbitrary: M' p' d')
          (simp_all add: ranking_primal_dual_Cons)
   qed
 qed simp
+
+lemma ranking_primal_One_iff:
+  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "e \<in> G"
+  shows "p $ G_enum e = 1 \<longleftrightarrow> e \<in> M"
+  using assms
+  by (metis empty_iff graph_abs_G.finite_E index_zero_vec(1) index_zero_vec(2) m_def ranking_primal_matched ranking_primal_unmatched to_nat_on_less_card zero_neq_one)
+
+lemma ranking_primal_Zero_iff:
+  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "e \<in> G"
+  shows "p $ G_enum e = 0 \<longleftrightarrow> e \<notin> M"
+  using assms
+  by (metis graph_abs_G.finite_E index_zero_vec(1) m_def ranking_primal_One_iff ranking_primal_unmatched to_nat_on_less_card zero_neq_one)
+
+lemma ranking_dual_L_if_matched:
+  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "l \<in> L"
+  assumes "set js \<subseteq> R"
+  shows "l \<in> Vs M \<Longrightarrow> d $ Vs_enum l = (g \<circ> Y) l / F"
+  using assms
+  by (intro ranking_dual_matched_L) auto
+
+lemma ranking_dual_R_if_matched:
+  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "r \<in> R"
+  assumes "set js \<subseteq> R"
+  shows "r \<in> Vs M \<Longrightarrow> d $ Vs_enum r = (1 - (g \<circ> Y) (THE i. {i,r} \<in> M)) / F"
+  using assms
+  by (intro ranking_dual_matched_R) auto
+
+lemma ranking_dual_if_unmatched:
+  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "v \<in> Vs G"
+  shows "v \<notin> Vs M \<Longrightarrow> d $ Vs_enum v = 0"
+  using assms
+  by (metis L_enum_less_n R_enum_less_n Un_iff Vs_enum_def index_zero_vec(1) parts_minimal ranking_dual_unmatched)
+
+lemma vec_eqI:
+  assumes "dim_vec v = dim_vec v'"
+  assumes "\<And>i. i < dim_vec v \<Longrightarrow> v $ i = v' $ i"
+  shows "v = v'"
+  using assms
+  by auto
+
+lemma primal_sol_eq:
+  assumes "ranking_primal_dual js = (M,p,d)"
+  shows "p = primal_sol M"
+  using assms
+  apply (intro vec_eqI)
+  unfolding primal_sol_def
+   apply (metis dim_vec dim_vec_ranking_primal_dual(1) fst_conv index_zero_vec(2) snd_conv)
+  by (smt (verit, best) card.empty dim_vec_ranking_primal_dual(1) from_nat_into fst_conv graph_abs_G.finite_E index_vec index_zero_vec(1) index_zero_vec(2) m_def not_less_zero of_bool_eq(1) of_bool_eq(2) ranking_primal_One_iff ranking_primal_unmatched snd_conv to_nat_on_from_nat_into_less)
+
+lemma dual_sol_eq:
+  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "set js \<subseteq> R"
+
+  shows "d = dual_sol M"
+proof (intro vec_eqI, goal_cases)
+  case (2 i)
+  with assms consider (unmatched) "Vs_enum_inv i \<notin> Vs M" | 
+    (L) "Vs_enum_inv i \<in> Vs M" "i < card L" | (R) "Vs_enum_inv i \<in> Vs M" "card L \<le> i" "i < n"
+    by fastforce
+  then show ?case
+  proof cases
+    case unmatched
+    with 2 assms show ?thesis
+      apply (auto simp: dual_sol_def)
+      by (metis UnCI Vs_enum_inv Vs_enum_inv_def add.right_neutral card.empty from_nat_into less_zeroE n_sum parts_minimal ranking_dual_if_unmatched)
+  next
+    case L
+    with 2 assms show ?thesis
+      apply (auto simp: dual_sol_def)
+      by (metis Vs_enum_inv Vs_enum_inv_def card.empty comp_apply from_nat_into not_less_zero ranking_dual_L_if_matched)
+  next
+    case R
+    let ?r = "Vs_enum_inv i"
+    from R assms have "d $ Vs_enum (Vs_enum_inv i) = (1 - (g \<circ> Y) (THE i. {i,?r} \<in> M)) / F"
+      apply (intro ranking_dual_R_if_matched[where r = ?r and p = p and js =js])
+         apply auto
+      by (metis card.empty from_nat_into geq_L_less_n_less_R not_less_zero)
+
+    with 2 R show ?thesis
+      apply (auto simp: dual_sol_def)
+      by (metis Vs_enum_inv Vs_enum_inv_def linorder_not_le)
+  qed
+qed (use assms in simp)
+
+lemma ranking_primal_card:
+  assumes "ranking_primal_dual js = (M,p,d)"
+  shows "p \<bullet> 1\<^sub>v m = card M"
+  using assms
+  apply (auto simp: primal_sol_eq[OF assms] intro!: primal_dot_One_card)
+  apply (metis empty_subsetI fst_conv fst_ranking_primal_dual graph_abs_G.graph in_mono subgraph_ranking)
+  done
+
+lemma ranking_dual_card:
+  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "set js \<subseteq> R"
+
+  shows "d \<bullet> 1\<^sub>v n = card M / F"
+  using assms
+  apply (auto simp: dual_sol_eq[OF assms] intro!: dual_dot_One_card)
+   apply (metis empty_subsetI fst_conv fst_ranking_primal_dual graph_abs_G.graph in_mono subgraph_ranking)
+  by (metis fst_conv fst_ranking_primal_dual graph_abs_G.graph matching_empty matching_ranking)
+
+lemma ranking_primal_dual_F:
+  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "set js \<subseteq> R"
+
+  shows "p \<bullet> 1\<^sub>v m = d \<bullet> 1\<^sub>v n * F"
+  using assms F_neq_0
+  by (auto simp: ranking_primal_card ranking_dual_card)
 end
 
 
