@@ -674,7 +674,7 @@ abbreviation G_enum :: "'a set \<Rightarrow> nat" where
   "G_enum \<equiv> to_nat_on G"
 
 definition incidence_matrix :: "nat mat" where
-  "incidence_matrix \<equiv> mat n m (\<lambda>(i,j). of_bool ({Vs_enum_inv i, Vs_enum_inv j} \<in> G))"
+  "incidence_matrix \<equiv> mat n m (\<lambda>(i,j). of_bool (Vs_enum_inv i \<in> from_nat_into G j))"
 
 fun step_primal_dual :: "('a graph \<times> nat vec \<times> real vec) \<Rightarrow> 'a \<Rightarrow> ('a graph \<times> nat vec \<times> real vec)" where
   "step_primal_dual (M,p,d) j = (
@@ -825,10 +825,9 @@ lemma G_enum_neqI: "e \<in> G \<Longrightarrow> e' \<in> G \<Longrightarrow> e \
   by (simp add: countable_finite graph_abs_G.finite_E)
 
 lemma primal_dot_One_card: "M \<subseteq> G \<Longrightarrow> primal_sol M \<bullet> (1\<^sub>v m) = card M"
-  apply (auto simp: scalar_prod_def m_def primal_sol_def)
-  apply (intro bij_betw_same_card[where f = "from_nat_into G"] bij_betwI[where g = G_enum])
-     apply (auto intro!: to_nat_on_less_card to_nat_on_from_nat_into_less simp: countable_finite graph_abs_G.finite_E in_mono)
-  done
+  by (auto simp: scalar_prod_def m_def primal_sol_def countable_finite graph_abs_G.finite_E in_mono
+      intro!: bij_betw_same_card[where f = "from_nat_into G"] bij_betwI[where g = G_enum] 
+        to_nat_on_less_card to_nat_on_from_nat_into_less)  
 
 lemma dual_dot_One_card:
   assumes "M \<subseteq> G"
@@ -974,6 +973,90 @@ lemma primal_is_dual_times_F:
   shows "primal_sol M \<bullet> (1\<^sub>v m) = dual_sol M \<bullet> (1\<^sub>v n) * F"
   using assms F_neq_0
   by (auto simp: primal_dot_One_card dual_dot_One_card)
+
+lemma matching_feasible:
+  assumes "matching M"
+  shows "incidence_matrix *\<^sub>v primal_sol M \<le> 1\<^sub>v n"
+  unfolding incidence_matrix_def  primal_sol_def 
+  apply (auto simp: mult_mat_vec_def scalar_prod_def less_eq_vec_def)
+proof (rule ccontr, simp add: not_le)
+  fix i
+  assume "i < n"
+  let ?indices = "{0..<local.m} \<inter> {e. from_nat_into G e \<in> M} \<inter> {e. local.Vs_enum_inv i \<in> from_nat_into G e}"
+  assume gt_1: "Suc 0 < card ?indices"
+
+  then obtain ei1 where ei1: "ei1 \<in> ?indices"
+    by (metis card_eq_0_iff ex_in_conv not_less0)
+
+  with gt_1 have "0 < card (?indices - {ei1})"
+    by auto
+
+  then obtain ei2 where ei2: "ei2 \<in> ?indices" "ei1 \<noteq> ei2"
+    by (metis Diff_eq_empty_iff card_0_eq card_ge_0_finite insertCI not_gr_zero subsetI)
+
+  with ei1 have "from_nat_into G ei1 \<in> M" "from_nat_into G ei2 \<in> M" 
+    "Vs_enum_inv i \<in> from_nat_into G ei1" "Vs_enum_inv i \<in> from_nat_into G ei2"
+    by auto
+
+  with \<open>matching M\<close> have "from_nat_into G ei1 = from_nat_into G ei2"
+    by (auto dest: matching_unique_match)
+
+  with \<open>ei1 \<noteq> ei2\<close> show False  
+    by (metis IntD1 atLeastLessThan_iff ei1 ei2(1) graph_abs_G.finite_E m_def to_nat_on_from_nat_into_less)
+qed
+
+lemma feasible_matching:
+  assumes "M \<subseteq> G"
+  assumes "incidence_matrix *\<^sub>v primal_sol M \<le> 1\<^sub>v n"
+  shows "matching M"
+  using assms
+  unfolding incidence_matrix_def primal_sol_def mult_mat_vec_def scalar_prod_def less_eq_vec_def
+  apply auto
+proof (rule ccontr)
+  assume "M \<subseteq> G"
+  let ?indices = "\<lambda>i. {0..<m} \<inter> {i. from_nat_into G i \<in> M} \<inter> {x. Vs_enum_inv i \<in> from_nat_into G x}"
+  assume at_most_One: "\<forall>i<n. card (?indices i) \<le> Suc 0"
+  assume "\<not>matching M"
+
+  then obtain e1 e2 where "e1 \<in> M" "e2 \<in> M" "e1 \<noteq> e2" "e1 \<inter> e2 \<noteq> {}"
+    unfolding matching_def
+    by blast
+
+  then obtain v where "v \<in> e1" "v \<in> e2"
+    by blast
+
+  with \<open>e1 \<in> M\<close> have v_le_n: "Vs_enum v < n"
+    by (metis L_enum_less_n R_enum_less_n Vs_cases Vs_enum_def assms(1) subset_eq vs_member_intro)
+
+  have e1_in_indices: "G_enum e1 \<in> ?indices (Vs_enum v)"
+    by (smt (verit) IntI Vs_inv_enum \<open>e1 \<in> M\<close> \<open>v \<in> e1\<close> assms(1) atLeastLessThan_iff countable_finite from_nat_into_to_nat_on graph_abs_G.finite_E in_mono m_def mem_Collect_eq to_nat_on_less_card vs_member_intro zero_le)
+
+  have e2_in_indices: "G_enum e2 \<in> ?indices (Vs_enum v)"
+    by (smt (verit) IntI Vs_inv_enum \<open>e2 \<in> M\<close> \<open>v \<in> e2\<close> assms(1) atLeastLessThan_iff countable_finite from_nat_into_to_nat_on graph_abs_G.finite_E in_mono m_def mem_Collect_eq to_nat_on_less_card vs_member_intro zero_le)
+
+  have "G_enum e1 \<noteq> G_enum e2"
+    using G_enum_neqI \<open>e1 \<in> M\<close> \<open>e1 \<noteq> e2\<close> \<open>e2 \<in> M\<close> assms(1) by blast
+
+  then have "0 < card (?indices (Vs_enum v) - {G_enum e2})"
+    by (metis Diff_cancel Diff_iff card_gt_0_iff e1_in_indices finite_Diff finite_Int finite_atLeastLessThan insertE)
+
+  then have "1 < card (?indices (Vs_enum v))"
+    by (metis Diff_empty card_Diff_insert e2_in_indices empty_iff zero_less_diff)
+
+  also from at_most_One v_le_n have "\<dots> \<le> 1"
+    by simp
+
+  finally have "1 < 1" ..
+
+  then show False
+    by fast
+qed
+
+lemma matching_iff_feasible:
+  assumes "M \<subseteq> G"
+  shows "matching M \<longleftrightarrow> incidence_matrix *\<^sub>v primal_sol M \<le> 1\<^sub>v n"
+  using assms
+  by (auto intro: feasible_matching matching_feasible)
 
 lemma step_primal_dual_cases[case_names no_neighbor j_matched new_match]:
   fixes M j
