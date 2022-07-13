@@ -638,14 +638,10 @@ qed
 context
   fixes L :: "'a set" and R :: "'a set"
   fixes G :: "'a graph"
-  fixes Y :: "'a \<Rightarrow> real"
 
   assumes fin_L: "finite L" and fin_R: "finite R"
   assumes bipartite: "bipartite G L R"
   assumes parts_minimal: "Vs G = L \<union> R"
-
-  assumes Y_funcset: "Y \<in> L \<rightarrow> {0..1}"
-  assumes inj_Y: "inj_on Y L"
 
   fixes g :: "real \<Rightarrow> real"
   fixes F :: "real"
@@ -676,8 +672,8 @@ abbreviation G_enum :: "'a set \<Rightarrow> nat" where
 definition incidence_matrix :: "nat mat" where
   "incidence_matrix \<equiv> mat n m (\<lambda>(i,j). of_bool (Vs_enum_inv i \<in> from_nat_into G j))"
 
-fun step_primal_dual :: "('a graph \<times> nat vec \<times> real vec) \<Rightarrow> 'a \<Rightarrow> ('a graph \<times> nat vec \<times> real vec)" where
-  "step_primal_dual (M,p,d) j = (
+fun step_primal_dual :: "('a \<Rightarrow> real) \<Rightarrow>('a graph \<times> nat vec \<times> real vec) \<Rightarrow> 'a \<Rightarrow> ('a graph \<times> nat vec \<times> real vec)" where
+  "step_primal_dual Y (M,p,d) j = (
     let ns = {i. i \<notin> Vs M \<and> {i,j} \<in> G} in
     if ns \<noteq> {} \<and> j \<notin> Vs M
     then let i = arg_min_on Y ns in (
@@ -690,17 +686,17 @@ fun step_primal_dual :: "('a graph \<times> nat vec \<times> real vec) \<Rightar
 
 declare step_primal_dual.simps[simp del]
 
-lemma step_primal_dual_no_neighbor[simp]: "{i. i \<notin> Vs M \<and> {i,j} \<in> G} = {} \<Longrightarrow> step_primal_dual (M,p,d) j = (M,p,d)"
+lemma step_primal_dual_no_neighbor[simp]: "{i. i \<notin> Vs M \<and> {i,j} \<in> G} = {} \<Longrightarrow> step_primal_dual Y (M,p,d) j = (M,p,d)"
   by (simp add: step_primal_dual.simps)
 
-lemma step_primal_dual_j_matched[simp]: "j \<in> Vs M \<Longrightarrow> step_primal_dual (M,p,d) j = (M,p,d)"
+lemma step_primal_dual_j_matched[simp]: "j \<in> Vs M \<Longrightarrow> step_primal_dual Y (M,p,d) j = (M,p,d)"
   by (simp add: step_primal_dual.simps)
 
 lemma step_primal_dual_new_match[simp]:
   fixes M j
   defines "ns \<equiv> {i. i \<notin> Vs M \<and> {i,j} \<in> G}"
   assumes "ns \<noteq> {}" "j \<notin> Vs M"
-  shows "step_primal_dual (M,p,d) j = (
+  shows "step_primal_dual Y (M,p,d) j = (
     insert {arg_min_on Y ns, j} M,
     p |\<^sub>v G_enum {arg_min_on Y ns, j} \<mapsto> 1,
     d |\<^sub>v Vs_enum (arg_min_on Y ns) \<mapsto> (g \<circ> Y) (arg_min_on Y ns) / F |\<^sub>v Vs_enum j \<mapsto> (1 - ((g \<circ> Y) (arg_min_on Y ns))) / F
@@ -708,22 +704,22 @@ lemma step_primal_dual_new_match[simp]:
   using assms
   by (simp add: step_primal_dual.simps Let_def)
 
-definition "ranking_primal_dual' M \<equiv> foldl step_primal_dual M"
-abbreviation "ranking_primal_dual \<equiv> ranking_primal_dual' ({}, 0\<^sub>v m, 0\<^sub>v n)"
+definition "ranking_primal_dual' Y M \<equiv> foldl (step_primal_dual Y) M"
+abbreviation "ranking_primal_dual Y \<equiv> ranking_primal_dual' Y ({}, 0\<^sub>v m, 0\<^sub>v n)"
 
-lemma ranking_primal_dual_Nil[simp]: "ranking_primal_dual' M [] = M"
+lemma ranking_primal_dual_Nil[simp]: "ranking_primal_dual' Y M [] = M"
   unfolding ranking_primal_dual'_def
   by simp
 
-lemma ranking_primal_dual_Cons: "ranking_primal_dual' M (j#js) = ranking_primal_dual' (step_primal_dual M j) js"
+lemma ranking_primal_dual_Cons: "ranking_primal_dual' Y M (j#js) = ranking_primal_dual' Y (step_primal_dual Y M j) js"
   unfolding ranking_primal_dual'_def
   by simp
 
 definition primal_sol :: "'a graph \<Rightarrow> nat vec" where
   "primal_sol M \<equiv> vec m (\<lambda>i. of_bool (from_nat_into G i \<in> M))"
 
-definition dual_sol :: "'a graph \<Rightarrow> real vec" where
-  "dual_sol M \<equiv> vec n (\<lambda>i.
+definition dual_sol :: "('a \<Rightarrow> real) \<Rightarrow> 'a graph \<Rightarrow> real vec" where
+  "dual_sol Y M \<equiv> vec n (\<lambda>i.
     if Vs_enum_inv i \<in> Vs M
     then
       if i < card L then (g \<circ> Y) (Vs_enum_inv i) / F
@@ -734,7 +730,7 @@ definition dual_sol :: "'a graph \<Rightarrow> real vec" where
 lemma dim_primal_sol[simp]: "dim_vec (primal_sol M) = m"
   by (simp add: primal_sol_def)
 
-lemma dim_dual_sol[simp]: "dim_vec (dual_sol M) = n"
+lemma dim_dual_sol[simp]: "dim_vec (dual_sol Y M) = n"
   by (simp add: dual_sol_def)
 
 lemma "e \<in> G \<Longrightarrow> primal_sol M $ (G_enum e) = 1 \<longleftrightarrow> e \<in> M"
@@ -808,14 +804,14 @@ lemma bij_betw_Vs_enum:
   by (intro bij_betwI[where g = "Vs_enum_inv"])
      (auto simp: Vs_inv_enum Vs_enum_inv parts_minimal elim!: Vs_cases i_cases intro!: L_enum_less_n R_enum_less_n from_nat_into)
 
-lemma fst_step_primal_dual: "fst (step_primal_dual (M,p,d) j) = step Y G M j"
+lemma fst_step_primal_dual: "fst (step_primal_dual Y (M,p,d) j) = step Y G M j"
   by (auto simp: step_def Let_def)
 
-lemma fst_ranking_primal_dual': "fst acc = M \<Longrightarrow> fst (ranking_primal_dual' acc js) = ranking' Y G M js"
+lemma fst_ranking_primal_dual': "fst acc = M \<Longrightarrow> fst (ranking_primal_dual' Y acc js) = ranking' Y G M js"
   by (induction js arbitrary: acc M)
      (auto simp: ranking_primal_dual_Cons ranking_Cons fst_step_primal_dual)
 
-lemma fst_ranking_primal_dual: "fst (ranking_primal_dual' (M,p,d) js) = ranking' Y G M js"
+lemma fst_ranking_primal_dual: "fst (ranking_primal_dual' Y (M,p,d) js) = ranking' Y G M js"
   by (auto intro!: fst_ranking_primal_dual')
 
 lemma Vs_enum_neqI: "v \<in> Vs G \<Longrightarrow> v' \<in> Vs G \<Longrightarrow> v \<noteq> v' \<Longrightarrow> Vs_enum v \<noteq> Vs_enum v'"
@@ -832,9 +828,9 @@ lemma primal_dot_One_card: "M \<subseteq> G \<Longrightarrow> primal_sol M \<bul
 lemma dual_dot_One_card:
   assumes "M \<subseteq> G"
   assumes "matching M"
-  shows "dual_sol M \<bullet> (1\<^sub>v n) = card M / F"
+  shows "dual_sol Y M \<bullet> (1\<^sub>v n) = card M / F"
 proof -
-  from graph_abs_G.graph have "dual_sol M \<bullet> (1\<^sub>v n) = 
+  from graph_abs_G.graph have "dual_sol Y M \<bullet> (1\<^sub>v n) = 
     (\<Sum>i\<in>{0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> {i. i < card L}. g (Y (Vs_enum_inv i)) / F) +
     (\<Sum>i\<in>{0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> - {i. i < card L}. (1 - g (Y (THE l. {l, Vs_enum_inv i} \<in> M))) / F)"
     by (simp add: dual_sol_def scalar_prod_def sum.If_cases)
@@ -970,7 +966,7 @@ qed
 lemma primal_is_dual_times_F:
   assumes "M \<subseteq> G"
   assumes "matching M"
-  shows "primal_sol M \<bullet> (1\<^sub>v m) = dual_sol M \<bullet> (1\<^sub>v n) * F"
+  shows "primal_sol M \<bullet> (1\<^sub>v m) = dual_sol Y M \<bullet> (1\<^sub>v n) * F"
   using assms F_neq_0
   by (auto simp: primal_dot_One_card dual_dot_One_card)
 
@@ -1059,7 +1055,7 @@ lemma matching_iff_feasible:
   by (auto intro: feasible_matching matching_feasible)
 
 lemma step_primal_dual_cases[case_names no_neighbor j_matched new_match]:
-  fixes M j
+  fixes M j and Y :: "'a \<Rightarrow> 'b::order"
   defines "ns \<equiv> {i. i \<notin> Vs M \<and> {i,j} \<in> G}"
 
   assumes "ns = {} \<Longrightarrow> P"
@@ -1078,22 +1074,22 @@ proof cases
     by blast
 qed (use assms in blast)+
 
-lemma dim_vec_step_primal[simp]: "dim_vec ((fst \<circ> snd) (step_primal_dual (M,p,d) j)) = dim_vec p"
+lemma dim_vec_step_primal[simp]: "dim_vec ((fst \<circ> snd) (step_primal_dual Y (M,p,d) j)) = dim_vec p"
   using step_primal_dual_cases[of M j]
   by cases simp_all
 
-lemma dim_vec_step_dual[simp]: "dim_vec ((snd \<circ> snd) (step_primal_dual (M,p,d) j)) = dim_vec d"
+lemma dim_vec_step_dual[simp]: "dim_vec ((snd \<circ> snd) (step_primal_dual Y (M,p,d) j)) = dim_vec d"
   using step_primal_dual_cases[of M j]
   by cases simp_all
 
 lemmas dim_vec_step_primal_dual[simp] = dim_vec_step_primal[simplified] dim_vec_step_dual[simplified]
 
-lemma dim_vec_ranking_primal[simp]: "dim_vec ((fst \<circ> snd) (ranking_primal_dual' (M,p,d) js)) = dim_vec p"
+lemma dim_vec_ranking_primal[simp]: "dim_vec ((fst \<circ> snd) (ranking_primal_dual' Y (M,p,d) js)) = dim_vec p"
 proof (induction js arbitrary: M p d)
   case (Cons j js)
-  let ?step = "step_primal_dual (M,p,d) j"
+  let ?step = "step_primal_dual Y (M,p,d) j"
 
-  have "dim_vec ((fst \<circ> snd) (ranking_primal_dual' (fst ?step, (fst \<circ> snd) ?step, (snd \<circ> snd) ?step) js)) =
+  have "dim_vec ((fst \<circ> snd) (ranking_primal_dual' Y (fst ?step, (fst \<circ> snd) ?step, (snd \<circ> snd) ?step) js)) =
     dim_vec ((fst \<circ> snd) ?step)"
     by (intro Cons.IH)
 
@@ -1103,12 +1099,12 @@ proof (induction js arbitrary: M p d)
     by (simp add: ranking_primal_dual_Cons)
 qed simp
 
-lemma dim_vec_ranking_dual[simp]: "dim_vec ((snd \<circ> snd) (ranking_primal_dual' (M,p,d) js)) = dim_vec d"
+lemma dim_vec_ranking_dual[simp]: "dim_vec ((snd \<circ> snd) (ranking_primal_dual' Y (M,p,d) js)) = dim_vec d"
 proof (induction js arbitrary: M p d)
   case (Cons j js)
-  let ?step = "step_primal_dual (M,p,d) j"
+  let ?step = "step_primal_dual Y (M,p,d) j"
 
-  have "dim_vec ((snd \<circ> snd) (ranking_primal_dual' (fst ?step, (fst \<circ> snd) ?step, (snd \<circ> snd) ?step) js)) =
+  have "dim_vec ((snd \<circ> snd) (ranking_primal_dual' Y (fst ?step, (fst \<circ> snd) ?step, (snd \<circ> snd) ?step) js)) =
     dim_vec ((snd \<circ> snd) ?step)"
     by (intro Cons.IH)
 
@@ -1121,18 +1117,18 @@ qed simp
 lemmas dim_vec_ranking_primal_dual[simp] = dim_vec_ranking_primal[simplified] dim_vec_ranking_dual[simplified]
 
 lemma
-  assumes "ranking_primal_dual' (M',p',d') js = (M,p,d)"
+  assumes "ranking_primal_dual' Y (M',p',d') js = (M,p,d)"
   shows dim_vec_ranking_primal'[simp]: "dim_vec p = dim_vec p'"
     and dim_vec_ranking_dual'[simp]: "dim_vec d = dim_vec d'"
   using assms
   by (metis dim_vec_ranking_primal_dual fst_conv snd_conv)+
 
 lemma step_primal_unmatched:
-  assumes "step_primal_dual (M',p',d') j = (M,p,d)"
+  assumes "step_primal_dual Y (M',p',d') j = (M,p,d)"
   assumes "e \<in> G"
   assumes "e \<notin> M"
   shows "p $ G_enum e = p' $ G_enum e"
-  using step_primal_dual_cases[of M' j]
+  using step_primal_dual_cases[of M' j _ Y]
 proof cases
   case new_match
   let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
@@ -1141,7 +1137,7 @@ proof cases
   from new_match have "{?i,j} \<in> G"
     by blast
 
-  from new_match have step: "step_primal_dual (M',p',d') j = (
+  from new_match have step: "step_primal_dual Y (M',p',d') j = (
     insert {?i,j} M',
     p' |\<^sub>v G_enum {?i,j} \<mapsto> 1,
     d' |\<^sub>v Vs_enum ?i \<mapsto> (g \<circ> Y) ?i / F |\<^sub>v Vs_enum j \<mapsto> (1 - (g \<circ> Y) ?i) / F
@@ -1159,14 +1155,14 @@ proof cases
 qed (use assms in simp_all)
 
 lemma ranking_primal_unmatched:
-  assumes "ranking_primal_dual' (M',p',d') js = (M,p,d)"
+  assumes "ranking_primal_dual' Y (M',p',d') js = (M,p,d)"
   assumes "e \<in> G"
   assumes "e \<notin> M"
   shows "p $ G_enum e = p' $ G_enum e"
   using assms
 proof (induction js arbitrary: M' p' d')
   case (Cons j js)
-  let ?step = "step_primal_dual (M',p',d') j"
+  let ?step = "step_primal_dual Y (M',p',d') j"
 
   from Cons.prems have "p $ G_enum e = (fst \<circ> snd) ?step $ G_enum e"
     by (intro Cons.IH[where M' = "fst ?step" and d' = "(snd \<circ> snd) ?step"])
@@ -1174,7 +1170,7 @@ proof (induction js arbitrary: M' p' d')
 
   also from Cons.prems have "\<dots> = p' $ G_enum e"
   proof (intro step_primal_unmatched[where M' = M' and d' = d' and j = j and M = "fst ?step" and d = "(snd \<circ> snd) ?step"])
-    have "fst (ranking_primal_dual' (M',p',d') (j#js)) = ranking' Y G M' (j#js)"
+    have "fst (ranking_primal_dual' Y (M',p',d') (j#js)) = ranking' Y G M' (j#js)"
       by (simp add: fst_ranking_primal_dual)
 
     with Cons.prems show "e \<notin> fst ?step"
@@ -1185,11 +1181,11 @@ proof (induction js arbitrary: M' p' d')
 qed simp
 
 lemma step_primal_matched_previously:
-  assumes "step_primal_dual (M',p',d') j = (M,p,d)"
+  assumes "step_primal_dual Y (M',p',d') j = (M,p,d)"
   assumes "e \<in> M'"
   assumes "e \<in> G"
   shows "p $ G_enum e = p' $ G_enum e"
-  using step_primal_dual_cases[of M' j]
+  using step_primal_dual_cases[of M' j _ Y]
 proof cases
   case new_match
   let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
@@ -1201,7 +1197,7 @@ proof cases
   with \<open>e \<in> G\<close> have "G_enum e \<noteq> G_enum {?i,j}"
     by (intro G_enum_neqI) auto
 
-  from new_match have "step_primal_dual (M',p',d') j = (
+  from new_match have "step_primal_dual Y (M',p',d') j = (
     insert {?i,j} M',
     p' |\<^sub>v G_enum {?i,j} \<mapsto> 1,
     d' |\<^sub>v Vs_enum ?i \<mapsto> (g \<circ> Y) ?i / F |\<^sub>v Vs_enum j \<mapsto> (1 - (g \<circ> Y) ?i) / F
@@ -1213,14 +1209,14 @@ proof cases
 qed (use assms in simp_all)
 
 lemma ranking_primal_matched_previously:
-  assumes "ranking_primal_dual' (M',p',d') js = (M,p,d)"
+  assumes "ranking_primal_dual' Y (M',p',d') js = (M,p,d)"
   assumes "e \<in> M'"
   assumes "e \<in> G"
   shows "p $ G_enum e = p' $ G_enum e"
   using assms
 proof (induction js arbitrary: M' p' d')
   case (Cons j js)
-  let ?step = "step_primal_dual (M',p',d') j"
+  let ?step = "step_primal_dual Y (M',p',d') j"
 
   from Cons.prems have "p $ G_enum e = (fst \<circ> snd) ?step $ G_enum e"
   proof (intro Cons.IH[where M' = "fst ?step" and  d' = "(snd \<circ> snd) ?step"], goal_cases)
@@ -1239,18 +1235,18 @@ qed simp
 lemma step_primal_matched:
   assumes "dim_vec p' = m"
 
-  assumes "step_primal_dual (M',p',d') j = (M,p,d)"
+  assumes "step_primal_dual Y (M',p',d') j = (M,p,d)"
 
   assumes "e \<notin> M'"
   assumes "e \<in> M"
   shows "p $ G_enum e = 1"
-  using step_primal_dual_cases[of M' j]
+  using step_primal_dual_cases[of M' j _ Y]
 proof cases
   case new_match
   let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
   let ?i = "arg_min_on Y ?ns"
 
-  from new_match have step: "step_primal_dual (M',p',d') j = (
+  from new_match have step: "step_primal_dual Y (M',p',d') j = (
     insert {?i,j} M',
     p' |\<^sub>v G_enum {?i,j} \<mapsto> 1,
     d' |\<^sub>v Vs_enum ?i \<mapsto> (g \<circ> Y) ?i / F |\<^sub>v Vs_enum j \<mapsto> (1 - (g \<circ> Y) ?i) / F
@@ -1270,7 +1266,7 @@ qed (use assms in simp_all)
 lemma ranking_primal_matched:
   assumes "dim_vec p' = m"
 
-  assumes "ranking_primal_dual' (M',p',d') js = (M,p,d)"
+  assumes "ranking_primal_dual' Y (M',p',d') js = (M,p,d)"
 
   assumes "e \<notin> M'"
   assumes "e \<in> M"
@@ -1278,7 +1274,7 @@ lemma ranking_primal_matched:
   using assms
 proof (induction js arbitrary: M' p' d')
   case (Cons j js)
-  let ?step = "step_primal_dual (M',p',d') j"
+  let ?step = "step_primal_dual Y (M',p',d') j"
 
   show ?case
   proof (cases "e \<in> fst ?step")
@@ -1306,11 +1302,11 @@ proof (induction js arbitrary: M' p' d')
 qed simp
 
 lemma step_dual_unmatched:
-  assumes "step_primal_dual (M',p',d') j = (M,p,d)"
+  assumes "step_primal_dual Y (M',p',d') j = (M,p,d)"
   assumes "v \<in> Vs G"
   assumes "v \<notin> Vs M"
   shows "d $ Vs_enum v = d' $ Vs_enum v"
-  using step_primal_dual_cases[of M' j]
+  using step_primal_dual_cases[of M' j _ Y]
 proof cases
   case new_match
   let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
@@ -1319,7 +1315,7 @@ proof cases
   from new_match have "j \<in> Vs G"
     by auto
 
-  from new_match have step: "step_primal_dual (M',p',d') j = (
+  from new_match have step: "step_primal_dual Y (M',p',d') j = (
     insert {?i,j} M',
     p' |\<^sub>v G_enum {?i,j} \<mapsto> 1, 
     d' |\<^sub>v Vs_enum ?i \<mapsto> g (Y ?i) / F |\<^sub>v Vs_enum j \<mapsto> (1-g (Y ?i)) / F
@@ -1343,14 +1339,14 @@ proof cases
 qed (use assms in simp_all)
 
 lemma ranking_dual_unmatched:
-  assumes "ranking_primal_dual' (M',p',d') js = (M,p,d)"
+  assumes "ranking_primal_dual' Y (M',p',d') js = (M,p,d)"
   assumes "v \<in> Vs G"
   assumes "v \<notin> Vs M"
   shows "d $ Vs_enum v = d' $ Vs_enum v"
   using assms
 proof (induction js arbitrary: M' p' d')
   case (Cons j js)
-  let ?step = "step_primal_dual (M',p',d') j"
+  let ?step = "step_primal_dual Y (M',p',d') j"
 
   from Cons have "d $ local.Vs_enum v = (snd \<circ> snd) ?step $ local.Vs_enum v"
     by (intro Cons.IH[where M' = "fst ?step" and p' = "(fst \<circ> snd) ?step"])
@@ -1358,7 +1354,7 @@ proof (induction js arbitrary: M' p' d')
 
   also from Cons.prems have "\<dots> = d' $ Vs_enum v"
   proof (intro step_dual_unmatched[where M' = M' and p' = p' and M = "fst ?step" and p = "(fst \<circ> snd) ?step"])
-    have "fst (ranking_primal_dual' (M',p',d') (j#js)) = ranking' Y G M' (j#js)"
+    have "fst (ranking_primal_dual' Y (M',p',d') (j#js)) = ranking' Y G M' (j#js)"
       by (simp add: fst_ranking_primal_dual)
 
     with Cons.prems show "v \<notin> Vs (fst ?step)"
@@ -1369,19 +1365,19 @@ proof (induction js arbitrary: M' p' d')
 qed simp
 
 lemma step_dual_matched_previously:
-  assumes "step_primal_dual (M',p',d') j = (M,p,d)"
+  assumes "step_primal_dual Y (M',p',d') j = (M,p,d)"
 
   assumes "v \<in> Vs M'"
   assumes "v \<in> Vs G"
 
   shows "d $ Vs_enum v = d' $ Vs_enum v"
-  using step_primal_dual_cases[of M' j]
+  using step_primal_dual_cases[of M' j _ Y]
 proof cases
   case new_match
   let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
   let ?i = "arg_min_on Y ?ns"
 
-  from new_match have step: "step_primal_dual (M',p',d') j = (
+  from new_match have step: "step_primal_dual Y (M',p',d') j = (
     insert {?i,j} M',
     p' |\<^sub>v G_enum {?i,j} \<mapsto> 1,
     d' |\<^sub>v Vs_enum ?i \<mapsto> (g \<circ> Y) ?i / F |\<^sub>v Vs_enum j \<mapsto> (1 - (g \<circ> Y) ?i) / F
@@ -1402,7 +1398,7 @@ proof cases
 qed (use assms in simp_all)
 
 lemma ranking_dual_matched_previously:
-  assumes "ranking_primal_dual' (M',p',d') js = (M,p,d)"
+  assumes "ranking_primal_dual' Y (M',p',d') js = (M,p,d)"
 
   assumes "v \<in> Vs M'"
   assumes "v \<in> Vs G"
@@ -1411,7 +1407,7 @@ lemma ranking_dual_matched_previously:
   using assms
 proof (induction js arbitrary: M' p' d')
   case (Cons j js)
-  let ?step = "step_primal_dual (M',p',d') j"
+  let ?step = "step_primal_dual Y (M',p',d') j"
 
   from Cons.prems have "d $ Vs_enum v = (snd \<circ> snd) ?step $ Vs_enum v"
   proof (intro Cons.IH[where M' = "fst ?step" and p' = "(fst \<circ> snd) ?step"], goal_cases)
@@ -1430,20 +1426,20 @@ qed simp
 lemma step_dual_matched_L:
   assumes "dim_vec d' = n"
 
-  assumes step_result: "step_primal_dual (M',p',d') j = (M,p,d)"
+  assumes step_result: "step_primal_dual Y (M',p',d') j = (M,p,d)"
   assumes "l \<notin> Vs M'"
   assumes "l \<in> Vs M"
   assumes "l \<in> L"
   assumes "j \<in> R"
 
   shows "d $ Vs_enum l = (g \<circ> Y) l / F"
-  using step_primal_dual_cases[of M' j]
+  using step_primal_dual_cases[of M' j _ Y]
 proof cases
   case new_match
   let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
   let ?i = "arg_min_on Y ?ns"
 
-  from new_match have step: "step_primal_dual (M',p',d') j = (
+  from new_match have step: "step_primal_dual Y (M',p',d') j = (
     insert {?i,j} M',
     p' |\<^sub>v G_enum {?i,j} \<mapsto> 1,
     d' |\<^sub>v Vs_enum ?i \<mapsto> (g \<circ> Y) ?i / F |\<^sub>v Vs_enum j \<mapsto> (1 - (g \<circ> Y) ?i) / F
@@ -1466,7 +1462,7 @@ qed (use assms in simp_all)
 lemma ranking_dual_matched_L:
   assumes "dim_vec d' = n"
 
-  assumes "ranking_primal_dual' (M',p',d') js = (M,p,d)"
+  assumes "ranking_primal_dual' Y (M',p',d') js = (M,p,d)"
   assumes "l \<notin> Vs M'"
   assumes "l \<in> Vs M"
   assumes "l \<in> L"
@@ -1476,7 +1472,7 @@ lemma ranking_dual_matched_L:
   using assms
 proof (induction js arbitrary: M' p' d')
   case (Cons j js)
-  let ?step = "step_primal_dual (M',p',d') j"
+  let ?step = "step_primal_dual Y (M',p',d') j"
 
   show ?case
   proof (cases "l \<in> Vs (fst ?step)")
@@ -1502,20 +1498,20 @@ qed simp
 lemma step_dual_matched_R:
   assumes "dim_vec d' = n"
 
-  assumes step_result: "step_primal_dual (M',p',d') j = (M,p,d)"
+  assumes step_result: "step_primal_dual Y (M',p',d') j = (M,p,d)"
   assumes "r \<notin> Vs M'"
   assumes "r \<in> Vs M"
   assumes "r \<in> R"
   assumes "j \<in> R"
 
   shows "d $ Vs_enum r = (1 - (g \<circ> Y) (THE i. {i,r} \<in> M)) / F"
-  using step_primal_dual_cases[of M' j]
+  using step_primal_dual_cases[of M' j _ Y]
 proof cases
   case new_match
   let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
   let ?i = "arg_min_on Y ?ns"
 
-  from new_match have step: "step_primal_dual (M',p',d') j = (
+  from new_match have step: "step_primal_dual Y (M',p',d') j = (
     insert {?i,j} M',
     p' |\<^sub>v G_enum {?i,j} \<mapsto> 1,
     d' |\<^sub>v Vs_enum ?i \<mapsto> (g \<circ> Y) ?i / F |\<^sub>v Vs_enum j \<mapsto> (1 - (g \<circ> Y) ?i) / F
@@ -1547,10 +1543,10 @@ proof cases
 qed (use assms in simp_all)
 
 lemma step_primal_dual_Ex1:
-  assumes "step_primal_dual (M',p',d') j = (M,p,d)"
+  assumes "step_primal_dual Y (M',p',d') j = (M,p,d)"
   assumes "\<exists>!l. {l,r} \<in> M'"
   shows "\<exists>!l. {l,r} \<in> M"
-  using step_primal_dual_cases[of M' j]
+  using step_primal_dual_cases[of M' j _ Y]
 proof cases
   case new_match
   let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
@@ -1564,10 +1560,10 @@ proof cases
 qed (use assms in simp_all)
 
 lemma step_primal_dual_the_match:
-  assumes "step_primal_dual (M',p',d') j = (M,p,d)"
+  assumes "step_primal_dual Y (M',p',d') j = (M,p,d)"
   assumes "\<exists>!l. {l,r} \<in> M'"
   shows "(THE i. {i,r} \<in> M) = (THE i. {i,r} \<in> M')"
-  using step_primal_dual_cases[of M' j]
+  using step_primal_dual_cases[of M' j _ Y]
 proof cases
   case new_match
   let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
@@ -1584,14 +1580,14 @@ proof cases
 qed (use assms in simp_all)
 
 lemma ranking_primal_dual_the_match:
-  assumes "ranking_primal_dual' (M',p',d') js = (M,p,d)"
+  assumes "ranking_primal_dual' Y (M',p',d') js = (M,p,d)"
   assumes "r \<in> Vs M'"
   assumes "\<exists>!l. {l,r} \<in> M'"
   shows "(THE i. {i,r} \<in> M) = (THE i. {i,r} \<in> M')"
   using assms
 proof (induction js arbitrary: M' p' d')
   case (Cons j js)
-  let ?step = "step_primal_dual (M',p',d') j"
+  let ?step = "step_primal_dual Y (M',p',d') j"
 
   from Cons.prems have "(THE i. {i,r} \<in> M) = (THE i. {i,r} \<in> fst ?step)"
   proof (intro Cons.IH[where p' = "(fst \<circ> snd) ?step" and d' = "(snd \<circ> snd) ?step"], goal_cases)
@@ -1619,7 +1615,7 @@ qed simp
 lemma ranking_dual_matched_R:
   assumes "dim_vec d' = n"
 
-  assumes "ranking_primal_dual' (M',p',d') js = (M,p,d)"
+  assumes "ranking_primal_dual' Y (M',p',d') js = (M,p,d)"
   assumes "r \<notin> Vs M'"
   assumes "r \<in> Vs M"
   assumes "r \<in> R"
@@ -1629,7 +1625,7 @@ lemma ranking_dual_matched_R:
   using assms
 proof (induction js arbitrary: M' p' d')
   case (Cons j js)
-  let ?step = "step_primal_dual (M',p',d') j"
+  let ?step = "step_primal_dual Y (M',p',d') j"
   
   show ?case
   proof (cases "r \<in> Vs (fst ?step)")
@@ -1639,7 +1635,7 @@ proof (induction js arbitrary: M' p' d')
     proof (intro ranking_primal_dual_the_match[where p' = "(fst \<circ> snd) ?step" and d' = "(snd \<circ> snd) ?step" and js = js and p = p and d = d], goal_cases)
       case 3
       show ?case
-        using step_primal_dual_cases[of M' j]
+        using step_primal_dual_cases[of M' j _ Y]
       proof cases
         case new_match
         with Cons.prems True show ?thesis
@@ -1668,21 +1664,21 @@ proof (induction js arbitrary: M' p' d')
 qed simp
 
 lemma ranking_primal_One_iff:
-  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "ranking_primal_dual Y js = (M,p,d)"
   assumes "e \<in> G"
   shows "p $ G_enum e = 1 \<longleftrightarrow> e \<in> M"
   using assms
   by (metis empty_iff graph_abs_G.finite_E index_zero_vec(1) index_zero_vec(2) m_def ranking_primal_matched ranking_primal_unmatched to_nat_on_less_card zero_neq_one)
 
 lemma ranking_primal_Zero_iff:
-  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "ranking_primal_dual Y js = (M,p,d)"
   assumes "e \<in> G"
   shows "p $ G_enum e = 0 \<longleftrightarrow> e \<notin> M"
   using assms
   by (metis graph_abs_G.finite_E index_zero_vec(1) m_def ranking_primal_One_iff ranking_primal_unmatched to_nat_on_less_card zero_neq_one)
 
 lemma ranking_dual_L_if_matched:
-  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "ranking_primal_dual Y js = (M,p,d)"
   assumes "l \<in> L"
   assumes "set js \<subseteq> R"
   shows "l \<in> Vs M \<Longrightarrow> d $ Vs_enum l = (g \<circ> Y) l / F"
@@ -1690,7 +1686,7 @@ lemma ranking_dual_L_if_matched:
   by (intro ranking_dual_matched_L) auto
 
 lemma ranking_dual_R_if_matched:
-  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "ranking_primal_dual Y js = (M,p,d)"
   assumes "r \<in> R"
   assumes "set js \<subseteq> R"
   shows "r \<in> Vs M \<Longrightarrow> d $ Vs_enum r = (1 - (g \<circ> Y) (THE i. {i,r} \<in> M)) / F"
@@ -1698,7 +1694,7 @@ lemma ranking_dual_R_if_matched:
   by (intro ranking_dual_matched_R) auto
 
 lemma ranking_dual_if_unmatched:
-  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "ranking_primal_dual Y js = (M,p,d)"
   assumes "v \<in> Vs G"
   shows "v \<notin> Vs M \<Longrightarrow> d $ Vs_enum v = 0"
   using assms
@@ -1712,7 +1708,7 @@ lemma vec_eqI:
   by auto
 
 lemma primal_sol_eq:
-  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "ranking_primal_dual Y js = (M,p,d)"
   shows "p = primal_sol M"
   using assms
   apply (intro vec_eqI)
@@ -1721,10 +1717,10 @@ lemma primal_sol_eq:
   by (smt (verit, best) card.empty dim_vec_ranking_primal_dual(1) from_nat_into fst_conv graph_abs_G.finite_E index_vec index_zero_vec(1) index_zero_vec(2) m_def not_less_zero of_bool_eq(1) of_bool_eq(2) ranking_primal_One_iff ranking_primal_unmatched snd_conv to_nat_on_from_nat_into_less)
 
 lemma dual_sol_eq:
-  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "ranking_primal_dual Y js = (M,p,d)"
   assumes "set js \<subseteq> R"
 
-  shows "d = dual_sol M"
+  shows "d = dual_sol Y M"
 proof (intro vec_eqI, goal_cases)
   case (2 i)
   with assms consider (unmatched) "Vs_enum_inv i \<notin> Vs M" | 
@@ -1756,7 +1752,7 @@ proof (intro vec_eqI, goal_cases)
 qed (use assms in simp)
 
 lemma ranking_primal_card:
-  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "ranking_primal_dual Y js = (M,p,d)"
   shows "p \<bullet> 1\<^sub>v m = card M"
   using assms
   apply (auto simp: primal_sol_eq[OF assms] intro!: primal_dot_One_card)
@@ -1764,7 +1760,7 @@ lemma ranking_primal_card:
   done
 
 lemma ranking_dual_card:
-  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "ranking_primal_dual Y js = (M,p,d)"
   assumes "set js \<subseteq> R"
 
   shows "d \<bullet> 1\<^sub>v n = card M / F"
@@ -1774,7 +1770,7 @@ lemma ranking_dual_card:
   by (metis fst_conv fst_ranking_primal_dual graph_abs_G.graph matching_empty matching_ranking)
 
 lemma ranking_primal_dual_F:
-  assumes "ranking_primal_dual js = (M,p,d)"
+  assumes "ranking_primal_dual Y js = (M,p,d)"
   assumes "set js \<subseteq> R"
 
   shows "p \<bullet> 1\<^sub>v m = d \<bullet> 1\<^sub>v n * F"
