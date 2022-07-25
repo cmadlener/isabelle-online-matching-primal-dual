@@ -635,7 +635,7 @@ next
     by (auto intro: dominance_unmatched)
 qed
 
-context
+locale wf_ranking_primal_dual_F_competitive =
   fixes L :: "'a set" and R :: "'a set"
   fixes G :: "'a graph"
 
@@ -645,10 +645,6 @@ context
 
   fixes g :: "real \<Rightarrow> real"
   fixes F :: "real"
-  
-  assumes g_funcset: "g \<in> {0..1} \<rightarrow> {0..1}"
-  assumes g_mono: "mono_on g {0..1}"
-  assumes g_One: "g 1 = 1"
 
   assumes F_neq_0: "F \<noteq> 0"
 begin
@@ -672,7 +668,7 @@ abbreviation G_enum :: "'a set \<Rightarrow> nat" where
 definition incidence_matrix :: "nat mat" where
   "incidence_matrix \<equiv> mat n m (\<lambda>(i,j). of_bool (Vs_enum_inv i \<in> from_nat_into G j))"
 
-fun step_primal_dual :: "('a \<Rightarrow> real) \<Rightarrow>('a graph \<times> nat vec \<times> real vec) \<Rightarrow> 'a \<Rightarrow> ('a graph \<times> nat vec \<times> real vec)" where
+fun step_primal_dual :: "('a \<Rightarrow> real) \<Rightarrow> ('a graph \<times> nat vec \<times> real vec) \<Rightarrow> 'a \<Rightarrow> ('a graph \<times> nat vec \<times> real vec)" where
   "step_primal_dual Y (M,p,d) j = (
     let ns = {i. i \<notin> Vs M \<and> {i,j} \<in> G} in
     if ns \<noteq> {} \<and> j \<notin> Vs M
