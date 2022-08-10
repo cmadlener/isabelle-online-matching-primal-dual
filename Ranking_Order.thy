@@ -17,6 +17,10 @@ lemma preorders_onD: "r \<in> preorders_on S \<Longrightarrow> preorder_on S r"
   unfolding preorders_on_def
   by blast
 
+lemma preorders_onI: "preorder_on S r \<Longrightarrow> r \<in> preorders_on S"
+  unfolding preorders_on_def
+  by blast
+
 lemma preorder_on_subset_Times: "preorder_on S r \<Longrightarrow> r \<subseteq> S \<times> S"
   unfolding preorder_on_def
   by (auto dest: refl_onD1 refl_onD2)
@@ -134,7 +138,7 @@ proof (cases M j G rule: step_cases)
   let ?i = "min_on_rel ?ns r"
 
   from new_match assms have "?i \<in> ?ns"
-    by (intro min_if_finite linorder_on'_subset[where S = ?N and T = ?ns]) auto
+    by (intro min_if_finite preorder_on'_subset[where S = ?N and T = ?ns]) auto
 
   with assms show ?thesis
     by (simp add: step_def)
@@ -155,6 +159,7 @@ locale wf_ranking_order =
 
   assumes finite_L: "finite L" and finite_R: "finite R"
   assumes bipartite_graph: "bipartite G L R"
+  assumes parts_minimal: "Vs G = L \<union> R"
 begin
 
 sublocale graph_abs G
