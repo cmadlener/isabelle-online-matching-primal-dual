@@ -5,7 +5,7 @@ theory Ranking_Order_Probabilistic
     "Treaps.Random_List_Permutation"
 begin
 
-hide_const Finite_Cartesian_Product.vec
+hide_const Finite_Cartesian_Product.vec Finite_Cartesian_Product.vec.vec_nth
 
 lemma restrict_space_UNIV[simp]: "restrict_space M UNIV = M"
   unfolding restrict_space_def
@@ -56,6 +56,29 @@ lemma to_nat_on_less_card:
   using assms
   by (auto dest: to_nat_on_finite bij_betwE)
 
+lemma AE_uniform_measure_in_set_mono:
+  "A \<in> sets M \<Longrightarrow> A \<subseteq> B \<Longrightarrow> AE x in uniform_measure M A. x \<in> B" 
+  by (auto intro: AE_uniform_measureI)
+
+lemma AE_PiM_uniform_measure_component_in_set:
+  assumes "\<And>i. i \<in> I \<Longrightarrow> emeasure (M i) (A i) \<noteq> 0"
+  assumes "\<And>i. i \<in> I \<Longrightarrow> emeasure (M i) (A i) \<noteq> \<infinity>"
+  assumes "\<And>i. i \<in> I \<Longrightarrow> A i \<in> sets (M i)"
+  assumes "\<And>i. i \<in> I \<Longrightarrow> A i \<subseteq> B i"
+  assumes "i \<in> I"
+  shows "AE f in PiM I (\<lambda>i. uniform_measure (M i) (A i)). f i \<in> B i"
+  using assms
+  by (intro AE_PiM_component prob_space_uniform_measure AE_uniform_measure_in_set_mono)
+
+lemma AE_PiM_uniform_measure_PiE_countable:
+  assumes "\<And>i. i \<in> I \<Longrightarrow> emeasure (M i) (A i) \<noteq> 0"
+  assumes "\<And>i. i \<in> I \<Longrightarrow> emeasure (M i) (A i) \<noteq> \<infinity>"
+  assumes "\<And>i. i \<in> I \<Longrightarrow> A i \<in> sets (M i)"
+  assumes "countable I"
+  shows "AE f in PiM I (\<lambda>i. uniform_measure (M i) (A i)). f \<in> Pi I A"
+  using assms
+  by (subst Pi_iff) (rule AE_ball_countable', intro AE_PiM_uniform_measure_component_in_set; auto)
+
 
 locale wf_ranking_order_prob = wf_ranking_order +
   fixes \<pi> :: "'a list" and Y_measure
@@ -72,6 +95,10 @@ locale wf_ranking_order_prob = wf_ranking_order +
 
   assumes F_gt_0: "0 < F"
 begin
+
+sublocale prob_space Y_measure
+  unfolding Y_measure_def
+  by (auto intro!: prob_space_PiM prob_space_uniform_measure)
 
 definition "n \<equiv> card (Vs G)"
 definition "m \<equiv> card G"
@@ -140,17 +167,20 @@ lemma
 
 
 lemma
-  shows "l \<in> L \<Longrightarrow> Vs_enum l = to_nat_on L l"
-    and "i < card L \<Longrightarrow> Vs_enum_inv i = from_nat_into L i"
+  shows Vs_enum_L: "l \<in> L \<Longrightarrow> Vs_enum l = to_nat_on L l"
+    and Vs_enum_inv_from_nat_into_L: "i < card L \<Longrightarrow> Vs_enum_inv i = from_nat_into L i"
   unfolding Vs_enum_def Vs_enum_inv_def
   by auto
 
 lemma
-  shows "r \<in> R \<Longrightarrow> Vs_enum r = to_nat_on R r + card L"
+  shows Vs_enum_R: "r \<in> R \<Longrightarrow> Vs_enum r = to_nat_on R r + card L"
     and "card L \<le> i \<Longrightarrow> Vs_enum_inv i = from_nat_into R (i - card L)"
   using bipartite_graph
   unfolding Vs_enum_def Vs_enum_inv_def
   by (auto dest: bipartite_disjointD)
+
+lemma Vs_enum_less_n: "x \<in> Vs G \<Longrightarrow> Vs_enum x < n"
+  by (auto elim!: Vs_cases simp: Vs_enum_L Vs_enum_R intro: L_enum_less_n R_enum_less_n)
 
 lemma
   shows Vs_inv_enum[simp]: "x \<in> Vs G \<Longrightarrow> Vs_enum_inv (Vs_enum x) = x"
@@ -195,7 +225,7 @@ lemmas in_vertices_measurable[measurable] = measurable_comp[OF ranking_measurabl
 
 lemma measurable_dual_component:
   assumes "i < n"
-  shows "(\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i) \<in> Y_measure \<rightarrow>\<^sub>M uniform_measure lborel {0..1}"
+  shows "(\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i) \<in> Y_measure \<rightarrow>\<^sub>M borel"
   unfolding dual_sol_def
 proof (subst index_vec[OF assms], subst measurable_If_restrict_space_iff, goal_cases)
   case 2
@@ -207,11 +237,7 @@ proof (subst index_vec[OF assms], subst measurable_If_restrict_space_iff, goal_c
       case 1
       with g_borel show ?case
         unfolding Y_measure_def
-        by (measurable, use \<open>i < card L\<close> in \<open>auto intro: from_nat_into\<close>)
-    next
-      case 3
-      then show ?case
-        by measurable auto
+        by (measurable, use \<open>i < card L\<close> in \<open>auto intro: from_nat_into simp: Vs_enum_inv_from_nat_into_L\<close>)
     qed simp
   next
     case 2
@@ -226,6 +252,90 @@ proof (subst index_vec[OF assms], subst measurable_If_restrict_space_iff, goal_c
       done
   qed
 qed measurable
+
+lemma g_nonnegI: "0 \<le> x \<Longrightarrow> x \<le> 1 \<Longrightarrow> 0 \<le> g x"
+  using g_from_to
+  by auto
+
+lemma g_less_eq_OneI: "0 \<le> x \<Longrightarrow> x \<le> 1 \<Longrightarrow> g x \<le> 1"
+  using g_from_to
+  by auto
+
+lemma div_F_nonneg[simp]: "0 \<le> x / F \<longleftrightarrow> 0 \<le> x"
+  using F_gt_0
+  by (simp add: zero_le_divide_iff)
+
+lemma div_F_less_eq_cancel[simp]: "x / F \<le> y / F \<longleftrightarrow> x \<le> y"
+  using F_gt_0
+  by (simp add: divide_le_cancel)
+
+lemma dual_sol_from_to:
+  assumes "\<And>i. i \<in> L \<Longrightarrow> 0 \<le> Y i"
+  assumes "\<And>i. i \<in> L \<Longrightarrow> Y i \<le> 1"
+  shows "($) (dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>)) \<in> {0..<n} \<rightarrow> {0..1/F}"
+  using assms F_gt_0
+  unfolding dual_sol_def
+  apply (auto intro!: g_nonnegI g_less_eq_OneI)
+         apply (metis Vs_enum_inv_def card.empty from_nat_into not_less_zero)
+        apply (metis Vs_enum_inv_def card.empty from_nat_into not_less_zero)
+       apply (metis Vs_enum_inv_def card.empty from_nat_into not_less_zero)
+     apply (metis Vs_enum_inv_def card.empty from_nat_into not_less_zero)
+\<comment> \<open>need that ranking produces bipartite matching\<close>
+  sorry
+
+lemma dual_sol_from_to_imp:
+  shows "Y \<in> L \<rightarrow> {0..1} \<Longrightarrow> ($) (dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>)) \<in> {0..<n} \<rightarrow> {0..1/F}"
+  by (intro dual_sol_from_to) auto
+
+lemma AE_Y_measure_from_to:
+  shows "AE Y in Y_measure. Y \<in> L \<rightarrow> {0..1}"
+  unfolding Y_measure_def
+  using finite_L
+  by (intro AE_PiM_uniform_measure_PiE_countable)
+     (auto intro: countable_finite)
+
+lemma AE_dual_sol_from_to:
+  shows "AE Y in Y_measure. ($) (dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>)) \<in> {0..<n} \<rightarrow> {0..1/F}" 
+  by (rule eventually_mono[OF AE_Y_measure_from_to dual_sol_from_to_imp])
+  
+lemma integrable_dual_component:
+  assumes "i < n"
+  shows "integrable Y_measure (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i)"
+  using assms
+proof (intro integrableI_nonneg measurable_dual_component, goal_cases)
+  case 2
+  show ?case
+    by (rule eventually_mono[OF AE_dual_sol_from_to], use 2 in auto)
+next
+  case 3
+  have "\<integral>\<^sup>+ x. ennreal (dual_sol x (ranking (linorder_from_keys L x) G \<pi>) $ i) \<partial>Y_measure \<le>
+    \<integral>\<^sup>+ x. 1/F \<partial>Y_measure"
+    by (rule nn_integral_mono_AE, rule eventually_mono[OF AE_dual_sol_from_to], use 3 in auto)
+
+  also have "\<dots> = 1/F"
+    by (simp add: emeasure_space_1)
+
+  finally show ?case
+    by (simp add: order_le_less_trans)
+qed simp
+
+lemma dual_expectation_feasible_edge:
+  assumes "i \<in> L"
+  assumes "j \<in> R"
+  assumes "{i,j} \<in> G"
+
+shows "expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ (Vs_enum i)) +
+  expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ (Vs_enum j)) \<ge> 1"
+  (is "?Ei_plus_Ej \<ge> 1")
+proof -
+  from \<open>{i,j} \<in> G\<close> have "?Ei_plus_Ej = expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ (Vs_enum i) +
+    dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ (Vs_enum j))"
+    by (intro Bochner_Integration.integral_add[symmetric] integrable_dual_component)
+       (auto dest: edges_are_Vs intro: Vs_enum_less_n)
+
+  show ?thesis
+    sorry
+qed
 
 end
 
