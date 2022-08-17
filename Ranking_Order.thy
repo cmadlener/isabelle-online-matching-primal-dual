@@ -6,6 +6,8 @@ begin
 
 sledgehammer_params [provers = cvc4 vampire verit e spass z3 zipperposition]
 
+declare vs_member_intro[rule del]
+
 text \<open>Weaker versions of \<^term>\<open>refl_on\<close> (and \<^term>\<open>linorder_on\<close>) that don't enforce
 that the relation is only defined on the given set.\<close>
 definition "refl_on' S r \<longleftrightarrow> (\<forall>x\<in>S. (x,x) \<in> r)"
@@ -104,13 +106,70 @@ definition step :: "('a \<times> 'a) set \<Rightarrow> 'a graph \<Rightarrow> 'a
     else M
   )"
 
-lemma step_cases[case_names no_neighbor j_matched new_match]:
+lemma step_cases'[case_names no_neighbor j_matched new_match]:
   assumes "{i. i \<notin> Vs M \<and> {i,j} \<in> G} = {} \<Longrightarrow> P"
   assumes "j \<in> Vs M \<Longrightarrow> P"
   assumes "{i. i \<notin> Vs M \<and> {i,j} \<in> G} \<noteq> {} \<Longrightarrow> j \<notin> Vs M \<Longrightarrow> P"
   shows "P"
   using assms
   by blast
+
+lemma finite_unmatched_neighbors[intro]:
+  "finite (Vs G) \<Longrightarrow> finite {i. i \<notin> Vs M \<and> {i,j} \<in> G}"
+  by (rule finite_subset[of _ "Vs G"]) (auto intro: vs_member_intro)
+
+lemma step_cases[consumes 2, case_names no_neighbor j_matched new_match]:
+  fixes G M j
+  defines "ns \<equiv> {i. i \<notin> Vs M \<and> {i,j} \<in> G}"
+  assumes "preorder_on' {i. {i,j} \<in> G} r" "finite (Vs G)"
+  assumes "{i. i \<notin> Vs M \<and> {i,j} \<in> G} = {} \<Longrightarrow> P"
+  assumes "j \<in> Vs M \<Longrightarrow> P"
+  assumes 
+    "\<lbrakk>ns \<noteq> {}; j \<notin> Vs M; min_on_rel ns r \<in> ns; 
+      \<not>(\<exists>i'\<in>ns. (i', min_on_rel ns r) \<in> r \<and> (min_on_rel ns r, i') \<notin> r)\<rbrakk> \<Longrightarrow> P"
+  shows "P"
+proof (cases M j G rule: step_cases')
+  case new_match
+
+  have "min_on_rel ns r \<in> ns"
+  proof (intro min_if_finite, goal_cases)
+    case 1
+    from \<open>preorder_on' {i. {i,j} \<in> G} r\<close> show ?case
+      unfolding ns_def
+      by (auto intro: preorder_on'_subset)
+  next
+    case 2
+    from \<open>finite (Vs G)\<close> show ?case
+      unfolding ns_def
+      by blast
+  next
+    case 3
+    from new_match show ?case
+      unfolding ns_def
+      by blast
+  qed
+
+  have "\<not>(\<exists>i'\<in>ns. (i', min_on_rel ns r) \<in> r \<and> (min_on_rel ns r, i') \<notin> r)"
+  proof (intro min_if_finite, goal_cases)
+    case 1
+    from \<open>preorder_on' {i. {i,j} \<in> G} r\<close> show ?case
+      unfolding ns_def
+      by (auto intro: preorder_on'_subset)
+  next
+    case 2
+    from \<open>finite (Vs G)\<close> show ?case
+      unfolding ns_def
+      by blast
+  next
+    case 3
+    from new_match show ?case
+      unfolding ns_def
+      by blast
+  qed
+
+  with new_match \<open>min_on_rel ns r \<in> ns\<close> assms show ?thesis
+    by blast
+qed (use assms in \<open>blast+\<close>)
 
 definition "ranking' r G M \<equiv> foldl (step r G) M"
 abbreviation "ranking r G \<equiv> ranking' r G {}"
@@ -122,36 +181,65 @@ lemma ranking_Cons: "ranking' r G M (j#js) = ranking' r G (step r G M j) js"
   unfolding ranking'_def
   by simp
 
-lemma finite_unmatched_neighbors[intro]:
-  "finite (Vs G) \<Longrightarrow> finite {i. i \<notin> Vs M \<and> {i,j} \<in> G}"
-  by (rule finite_subset[of _ "Vs G"]) auto
+lemma ranking_append: "ranking' r G M (js@js') = ranking' r G (ranking' r G M js) js'"
+  unfolding ranking'_def
+  by simp
+
 
 lemma step_subgraph:
-  assumes "finite (Vs G)"
+  assumes fin: "finite (Vs G)"
+  assumes preorder: "preorder_on' {i. {i,j} \<in> G} r" (is "preorder_on' ?N r")
   assumes "M \<subseteq> G" 
-  assumes "preorder_on' {i. {i,j} \<in> G} r" (is "preorder_on' ?N r")
   shows "step r G M j \<subseteq> G"
-  using assms
-proof (cases M j G rule: step_cases)
-  case new_match
-  let ?ns = "{i. i \<notin> Vs M \<and> {i,j} \<in> G}"
-  let ?i = "min_on_rel ?ns r"
-
-  from new_match assms have "?i \<in> ?ns"
-    by (intro min_if_finite preorder_on'_subset[where S = ?N and T = ?ns]) auto
-
-  with assms show ?thesis
-    by (simp add: step_def)
-qed (use assms in \<open>simp_all add: step_def\<close>)
+  using preorder fin
+  by (cases rule: step_cases[where M = M]) (use assms in \<open>simp_all add: step_def\<close>)
 
 lemma ranking'_subgraph:
   assumes "finite (Vs G)"
-  assumes "M \<subseteq> G"
   assumes "\<forall>j\<in>set js. preorder_on' {i. {i,j} \<in> G} r"
+  assumes "M \<subseteq> G"
   shows "ranking' r G M js \<subseteq> G"
   using assms
   by (induction js arbitrary: M)
      (auto simp: ranking_Cons dest: step_subgraph)
+
+lemma matching_step:
+  assumes fin: "finite (Vs G)"
+  assumes preorder: "preorder_on' {i. {i,j} \<in> G} r"
+  assumes "matching M"
+  shows "matching (step r G M j)"
+  using preorder fin
+  by (cases rule: step_cases[where M = M])
+     (use assms in \<open>auto simp: step_def intro: matching_insert\<close>)
+
+lemma matching_ranking':
+  assumes "finite (Vs G)"
+  assumes "\<forall>j\<in>set js. preorder_on' {i. {i,j} \<in> G} r"
+  assumes "matching M"
+  shows "matching (ranking' r G M js)"
+  using assms
+  by (induction js arbitrary: M)
+     (auto simp: ranking_Cons dest: matching_step)
+
+lemma step_mono:
+  assumes "e \<in> M"
+  shows "e \<in> step r G M j"
+  using assms
+  by (cases M j G rule: step_cases')
+     (auto simp: step_def)
+
+lemma ranking_mono:
+  assumes "e \<in> M"
+  shows "e \<in> ranking' r G M js"
+  using assms
+  by (induction js arbitrary: M)
+     (auto simp: ranking_Cons dest: step_mono)
+
+lemma ranking_mono_vs:
+  assumes "v \<in> Vs M"
+  shows "v \<in> Vs (ranking' r G M js)"
+  using assms
+  by (meson ranking_mono vs_member)
 
 locale wf_ranking_order =
   fixes L :: "'a set" and R :: "'a set"
@@ -167,6 +255,7 @@ sublocale graph_abs G
   by (intro finite_parts_bipartite_graph_abs)
 
 lemmas finite_graph = finite_E
+lemmas finite_vs = graph[THEN conjunct2]
 
 lemma finite_subsets: "finite {M. M \<subseteq> G}"
   using finite_graph by blast
@@ -186,5 +275,67 @@ proof -
   with preorder show ?thesis
     by (auto intro: preorder_on'_subset)
 qed
+
+lemma neighbors_right_subset_left: "j \<in> R \<Longrightarrow> {i. {i,j} \<in> G} \<subseteq> L"
+  using bipartite_graph
+  by (auto dest: bipartite_edgeD)
+
+lemma finite_neighbors:
+  "finite {i. {i,j} \<in> G}"
+  by (rule finite_subset[of _ "Vs G"])
+     (auto simp: graph intro: vs_member_intro)
+
+lemma finite_unmatched_neighbors:
+  "finite {i. i \<notin> Vs M \<and> {i,j} \<in> G}"
+  by (rule finite_subset[of _ "Vs G"])
+     (auto simp: graph intro: vs_member_intro)
+
+lemma unmatched_neighbors_L:
+  assumes "j \<in> R"
+  shows "{i. i \<notin> Vs M \<and> {i,j} \<in> G} \<subseteq> L"
+  using assms bipartite_graph
+  by (auto dest: bipartite_edgeD)
+
+lemma min_in_L:
+  assumes "preorder_on' {i. {i,j} \<in> G} r"
+  assumes "j \<in> R"
+  assumes "i \<notin> Vs M" "{i,j} \<in> G"
+  shows "min_on_rel {i. i \<notin> Vs M \<and> {i, j} \<in> G} r \<in> L" (is "min_on_rel ?S r \<in> L")
+proof -
+  from assms have "min_on_rel ?S r \<in> ?S"
+    by (intro min_if_finite finite_unmatched_neighbors)
+       (auto intro: preorder_on'_subset)
+
+  with \<open>j \<in> R\<close> bipartite_graph show ?thesis
+    by (auto dest: bipartite_edgeD)
+qed
+
+lemma unmatched_R_in_step_if:
+  assumes preorder: "preorder_on' {i. {i,j'} \<in> G} r"
+  assumes "j' \<in> R" "j' \<noteq> j"
+  assumes "j \<notin> L" "j \<notin> Vs M"
+  shows "j \<notin> Vs (step r G M j')"
+  using assms
+  by (cases M j' G rule: step_cases')
+     (auto simp: step_def vs_insert dest: min_in_L)
+
+lemma unmatched_R_in_ranking_if:
+  assumes "preorder_on L r"
+  assumes "set js \<subseteq> R"
+  assumes "j \<notin> L" "j \<notin> set js"
+  assumes "j \<notin> Vs M"
+  shows "j \<notin> Vs (ranking' r G M js)"
+  using assms
+proof (induction js arbitrary: M)
+  case (Cons j' js)
+
+  then have "j \<notin> Vs (step r G M j')"
+    by (intro unmatched_R_in_step_if preorder_on_neighborsI[where js = "j'#js"] preorders_onI)
+       auto
+
+  with Cons show ?case
+    by (simp add: ranking_Cons)
+qed simp
+
 end
 end

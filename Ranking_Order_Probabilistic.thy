@@ -7,6 +7,29 @@ begin
 
 hide_const Finite_Cartesian_Product.vec Finite_Cartesian_Product.vec.vec_nth
 
+lemma split_list_distinct:
+  assumes "distinct xs"
+  assumes "x \<in> set xs"
+  shows "\<exists>ys zs. xs = ys @ x # zs \<and> x \<notin> set ys \<and> x \<notin> set zs"
+  using assms
+proof (induction xs)
+  case Nil
+  then show ?case
+    by simp
+next
+  case (Cons a xs)
+  show ?case
+  proof cases
+    assume "x = a"
+    with Cons show ?case
+      by fastforce
+  next
+    assume "x \<noteq> a"
+    with Cons show ?case
+      by (fastforce intro!: Cons_eq_appendI)
+  qed
+qed
+
 lemma restrict_space_UNIV[simp]: "restrict_space M UNIV = M"
   unfolding restrict_space_def
   by (auto simp: measure_of_of_measure)
@@ -265,7 +288,9 @@ lemma online_matched_with_borel_iff:
   defines "r \<equiv> linorder_from_keys L Y"
   assumes "j \<in> R" "A \<in> sets borel"
 
-  assumes \<pi>_decomp: "\<pi> = \<pi>' @ j # \<pi>''" "j \<notin> set \<pi>'"
+  \<comment> \<open>should we lift this assumption (since it is always true)? would need to use \<^term>\<open>takeWhile (\<lambda>x. x \<noteq> j)\<close>
+      and \<^term>\<open>dropWhile\<close> in statement\<close>
+  assumes \<pi>_decomp: "\<pi> = \<pi>' @ j # \<pi>''" "j \<notin> set \<pi>'" "j \<notin> set \<pi>''"
   defines "M' \<equiv> ranking r G \<pi>'"
 
   shows "j \<in> Vs (ranking r G \<pi>) \<and> Y (THE i. {i,j} \<in> ranking r G \<pi>) \<in> A
@@ -274,26 +299,81 @@ lemma online_matched_with_borel_iff:
   (is "j \<in> Vs ?M \<and> Y (THE i. {i,j} \<in> ?M) \<in> A \<longleftrightarrow> ?F")
 proof
   assume j_matched: "j \<in> Vs ?M \<and> Y (THE i. {i,j} \<in> ?M) \<in> A"
+  let ?i = "min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G} r"
 
-  from \<pi>_decomp have "?M = ranking' r G (ranking' r G {} \<pi>') (j#\<pi>'')"
-    unfolding ranking'_def
-    by simp
+  from \<pi>_decomp have "?M = ranking' r G M' (j#\<pi>'')"
+    unfolding M'_def
+    by (simp add: ranking_append)
 
-  from \<pi>_decomp have "j \<notin> Vs (ranking' r G {} \<pi>')"
-    sorry
+  from \<pi>_decomp \<open>j \<in> R\<close> bipartite_graph perm have "j \<notin> Vs M'"
+    unfolding M'_def r_def
+    by (intro unmatched_R_in_ranking_if)
+       (auto dest: bipartite_disjointD permutations_of_setD)
 
-  with \<pi>_decomp j_matched have "j \<in> Vs (step r G (ranking' r G {} \<pi>') j)"
-    sorry
+  have neighbor_ex: "\<exists>i\<in>{i. {i,j} \<in> G}. i \<notin> Vs M'" (is "?Ex")
+  proof (rule ccontr)
+    assume "\<not> ?Ex"
 
-  then show ?F
-    sorry
+    then have step_unchanged: "step r G M' j = M'"
+      by (auto simp: step_def)
+
+    with \<pi>_decomp have M: "?M = ranking' r G M' \<pi>''"
+      unfolding ranking'_def M'_def
+      by simp
+
+    from \<pi>_decomp \<open>j \<in> R\<close> \<open>j \<notin> Vs M'\<close> perm step_unchanged bipartite_graph have "j \<notin> Vs ?M"
+      by (subst M, intro unmatched_R_in_ranking_if, unfold r_def)
+         (auto dest: permutations_of_setD bipartite_disjointD)
+    
+    with j_matched show False
+      by blast
+  qed
+
+  with \<open>j \<notin> Vs M'\<close> have step_eq: "step r G M' j = insert {?i, j} M'"
+    by (auto simp add: step_def)
+
+  from neighbor_ex \<open>j \<in> R\<close> bipartite_graph have i_unmatched: "?i \<in> {i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
+    by (intro min_if_finite preorder_on'_subset[where S = L and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"] finite_unmatched_neighbors)
+       (auto simp: r_def intro: preorder_on_imp_preorder_on'  dest: bipartite_edgeD)
+
+  from neighbor_ex \<open>j \<in> R\<close> bipartite_graph have i_min: 
+    "\<not>(\<exists>i'\<in>{i. i \<notin> Vs M' \<and> {i,j} \<in> G}. (i',?i) \<in> r \<and> (?i,i') \<notin> r)"
+    by (intro min_if_finite preorder_on'_subset[where S = L and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"] finite_unmatched_neighbors)
+       (auto simp: r_def intro: preorder_on_imp_preorder_on'  dest: bipartite_edgeD)
+
+
+  have the_i: "(THE i. {i,j} \<in> ?M) = ?i"
+  proof (intro the_match matching_ranking', goal_cases)
+    case 2
+    from perm show ?case
+      by (auto intro: preorder_on_neighborsI dest: permutations_of_setD simp: r_def)
+  next
+    case 4
+    from \<pi>_decomp step_eq show ?case
+      by (auto simp add: ranking_append ranking_Cons M'_def intro: ranking_mono)
+  qed (use finite_vs in simp_all)
+
+  show ?F
+  proof (intro bexI[of _ ?i] conjI ballI impI, goal_cases)
+    case (3 i')
+    show ?case
+    proof (rule ccontr, simp add: not_le)
+      assume "Y i' < Y ?i"
+      with 3 i_unmatched \<open>j \<in> R\<close> have "(i',?i) \<in> r \<and> (?i,i') \<notin> r"
+        unfolding r_def linorder_from_keys_def
+        by (auto dest: neighbors_right_subset_left)
+
+      with 3 i_min show False
+        by blast
+    qed
+  qed (use i_unmatched j_matched in \<open>simp_all add: the_i\<close>)
 next
   assume eligible_neighbor: ?F
   let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
 
   from eligible_neighbor obtain i where 
     i_eligible: "i \<notin> Vs M'" "{i,j} \<in> G" and
-    Y_i_in_A: "Y i \<in> A" and
+    Y_i: "Y i \<in> A" and
     i_min_on_r: "\<forall>i'\<in>?ns. Y i \<le> Y i'"
     by auto
 
@@ -301,25 +381,33 @@ next
     unfolding ranking'_def M'_def
     by simp
 
-  from \<pi>_decomp have j_unmatched_before: "j \<notin> Vs M'"
-    sorry
+  from \<pi>_decomp \<open>j \<in> R\<close> bipartite_graph perm have j_unmatched_before: "j \<notin> Vs M'"
+    unfolding M'_def r_def
+    by (intro unmatched_R_in_ranking_if)
+       (auto dest: bipartite_disjointD permutations_of_setD)
 
   let ?min = "min_on_rel ?ns r"
 
-  from j_unmatched_before i_eligible have "step r G M' j = insert {?min, j} M'"
+  from j_unmatched_before i_eligible have step_eq: "step r G M' j = insert {?min, j} M'"
     unfolding step_def
     by auto
 
-  then have "(THE i. {i,j} \<in> step r G M' j) = ?min"
-    sorry
+  with finite_vs perm \<pi>_decomp have the_i_step: "(THE i. {i,j} \<in> step r G M' j) = ?min"
+    unfolding M'_def
+    by (intro the_match matching_step matching_ranking')
+       (auto intro: preorder_on_neighborsI[where js = \<pi>] simp: r_def dest: permutations_of_setD)
 
-  have min_on: "?min \<in> {i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
-    "\<not>(\<exists>x \<in> ?ns. (x, ?min) \<in> r \<and> (?min, x) \<notin> r)"
+  from \<open>j \<in> R\<close> bipartite_graph i_eligible have min_unmatched: "?min \<in> {i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
     unfolding r_def
-    apply (intro min_if_finite preorder_on'_subset[where S = L and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"] preorder_on_imp_preorder_on')
-    sorry
+    by (intro min_if_finite preorder_on'_subset[where S = L and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"] preorder_on_imp_preorder_on' finite_unmatched_neighbors)
+       (auto dest: bipartite_edgeD)
 
-  have "Y (min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G} r) = Y i"
+  from \<open>j \<in> R\<close> bipartite_graph i_eligible have min_is_min: "\<not>(\<exists>x \<in> ?ns. (x, ?min) \<in> r \<and> (?min, x) \<notin> r)"
+    unfolding r_def
+    by (intro min_if_finite preorder_on'_subset[where S = L and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"] preorder_on_imp_preorder_on' finite_unmatched_neighbors)
+       (auto dest: bipartite_edgeD)
+
+  have Y_min: "Y (min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G} r) = Y i"
   proof (rule ccontr)
     assume "Y (min_on_rel {i. i \<notin> Vs M' \<and> {i, j} \<in> G} r) \<noteq> Y i"
     then consider "Y (min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G} r) < Y i" | "Y i < Y (min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G} r)"
@@ -328,25 +416,35 @@ next
     then show False
     proof cases
       case 1     
-      with min_on i_min_on_r show ?thesis
+      with min_unmatched i_min_on_r show ?thesis
         by auto
     next
       case 2
-      then have "(i, ?min) \<in> r" "(?min, i) \<notin> r"
+      with \<open>{i,j} \<in> G\<close> \<open>j \<in> R\<close> bipartite_graph min_unmatched have "(i, ?min) \<in> r" "(?min, i) \<notin> r"
         unfolding r_def linorder_from_keys_def
-         apply auto
-        sorry
+        by (auto dest: bipartite_edgeD)
 
-      with min_on i_eligible show ?thesis
+      with min_is_min i_eligible show ?thesis
         by blast
     qed
   qed
 
-  have "j \<in> Vs (step r G M' j) \<and> Y (THE i. {i,j} \<in> step r G M' j) \<in> A"
-    sorry
+  show "j \<in> Vs ?M \<and> Y (THE i. {i,j} \<in> ?M) \<in> A"
+  proof (intro conjI, goal_cases)
+    case 1
+    from \<pi>_decomp step_eq show ?case
+      unfolding M'_def
+      by (auto simp: ranking_append ranking_Cons vs_insert intro: ranking_mono_vs)
+  next
+    case 2
+    from finite_vs perm \<pi>_decomp step_eq have "(THE i. {i,j} \<in> ranking r G \<pi>) = ?min"
+    unfolding M'_def
+    by (intro the_match matching_step matching_ranking')
+       (auto intro: preorder_on_neighborsI ranking_mono dest: permutations_of_setD simp: r_def ranking_append ranking_Cons)
 
-  then show "j \<in> Vs ?M \<and> Y (THE i. {i,j} \<in> ?M) \<in> A"
-    sorry
+  with Y_min Y_i show ?case
+    by simp
+  qed
 qed
 
 lemma dual_component_online_in_sets:
@@ -355,35 +453,34 @@ lemma dual_component_online_in_sets:
   shows  "{Y \<in> space (Pi\<^sub>M L (\<lambda>i. uniform_measure lborel {0..1})). j \<in> Vs (ranking (linorder_from_keys L Y) G \<pi>) \<and> 
     Y (THE l. {l, j} \<in> ranking (linorder_from_keys L Y) G \<pi>) \<in> A} \<in> sets (Pi\<^sub>M L (\<lambda>i. uniform_measure lborel {0..1}))"
 proof -
-  from \<open>j \<in> R\<close> perm obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff" "j \<notin> set pre"
-    by (auto dest!: permutations_of_setD(1) split_list_first)
+  from \<open>j \<in> R\<close> perm obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
+    by (metis permutations_of_setD split_list_distinct)
 
   with perm have set_pre: "set pre \<subseteq> R"
     by (auto dest: permutations_of_setD)
 
   show ?thesis
-    apply (rule predE)
-    apply (subst online_matched_with_borel_iff)
-    using \<open>j \<in> R\<close> apply blast
-    using \<open>A \<in> sets borel\<close> apply blast
-    using \<pi>_decomp apply blast
-    using \<pi>_decomp apply blast
-    apply measurable
-    subgoal sorry
-    using set_pre apply measurable
-    unfolding Y_measure_def U_def apply measurable
-     apply measurable
-    using \<open>A \<in> sets borel\<close> apply measurable
-    subgoal using \<open>j \<in> R\<close> bipartite_graph by (auto dest: bipartite_edgeD)
-    apply measurable
-    subgoal sorry
-    apply measurable
-    using set_pre apply blast
-    unfolding Y_measure_def U_def apply simp
-    apply measurable
-    using \<open>j \<in> R\<close> bipartite_graph
-     apply (auto dest: bipartite_edgeD)
-    done
+  proof (intro predE, subst online_matched_with_borel_iff[OF assms \<pi>_decomp], intro pred_intros_finite pred_intros_logic, goal_cases)
+    case (2 i)
+    with set_pre show ?case
+      by measurable (auto simp: Y_measure_def U_def)
+  next
+    case (3 i)
+    with \<open>A \<in> sets borel\<close> show ?case
+      by measurable
+         (use 3 \<open>j \<in> R\<close> in \<open>auto dest: neighbors_right_subset_left\<close>)
+  next
+    case (5 i i')
+    with set_pre show ?case
+      by measurable (auto simp: Y_measure_def U_def)
+  next
+    case (6 i i')
+    with \<open>j \<in> R\<close> have "i \<in> L" "i' \<in> L"
+      by (auto dest: neighbors_right_subset_left)
+
+    then show ?case
+      by measurable
+  qed (rule finite_neighbors)+
 qed
 
 lemma dual_component_online_borel_measurable:
@@ -395,17 +492,15 @@ proof (rule measurableI, goal_cases)
     by simp
 next
   case (2 A)
-  then show ?case
-    apply (subst space_restrict_space)
-    apply (subst sets_restrict_space)
-    unfolding Y_measure_def U_def
-    apply (simp add: image_def vimage_def Int_def)
-    apply (rule bexI[of _ "{Y \<in> space Y_measure. i \<in> Vs (ranking (linorder_from_keys L Y) G \<pi>) \<and> Y (THE l. {l,i} \<in> ranking (linorder_from_keys L Y) G \<pi>) \<in> A}"])
-    unfolding Y_measure_def U_def
-     apply blast
-    using \<open>i \<in> R\<close> by (rule dual_component_online_in_sets)
+  show ?case
+  proof (simp add: space_restrict_space sets_restrict_space Y_measure_def U_def image_def vimage_def Int_def,
+      rule bexI[of _ "{Y \<in> space Y_measure. i \<in> Vs (ranking (linorder_from_keys L Y) G \<pi>) \<and> Y (THE l. {l,i} \<in> ranking (linorder_from_keys L Y) G \<pi>) \<in> A}"], goal_cases)
+    case 2
+    from \<open>i \<in> R\<close> \<open>A \<in> sets borel\<close> show ?case
+      unfolding Y_measure_def U_def
+      by (rule dual_component_online_in_sets)
+  qed (unfold Y_measure_def U_def, blast)
 qed
-
 
 lemma measurable_dual_component:
   assumes "i < n"
