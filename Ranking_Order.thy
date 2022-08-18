@@ -194,7 +194,7 @@ lemma step_subgraph:
   using preorder fin
   by (cases rule: step_cases[where M = M]) (use assms in \<open>simp_all add: step_def\<close>)
 
-lemma ranking'_subgraph:
+lemma ranking_subgraph:
   assumes "finite (Vs G)"
   assumes "\<forall>j\<in>set js. preorder_on' {i. {i,j} \<in> G} r"
   assumes "M \<subseteq> G"
@@ -212,7 +212,7 @@ lemma matching_step:
   by (cases rule: step_cases[where M = M])
      (use assms in \<open>auto simp: step_def intro: matching_insert\<close>)
 
-lemma matching_ranking':
+lemma matching_ranking:
   assumes "finite (Vs G)"
   assumes "\<forall>j\<in>set js. preorder_on' {i. {i,j} \<in> G} r"
   assumes "matching M"
@@ -336,6 +336,61 @@ proof (induction js arbitrary: M)
   with Cons show ?case
     by (simp add: ranking_Cons)
 qed simp
+
+lemma bipartite_step:
+  assumes preorder: "preorder_on' {i. {i,j} \<in> G} r"
+  assumes "bipartite M L R"
+  assumes "j \<in> R"
+  shows "bipartite (step r G M j) L R"
+  using preorder finite_vs
+  by (cases rule: step_cases[where M = M])
+     (use assms in \<open>auto simp: step_def intro: bipartite_insertI dest: neighbors_right_subset_left\<close>)
+
+lemma bipartite_ranking:
+  assumes "\<forall>j\<in>set js. preorder_on' {i. {i,j} \<in> G} r"
+  assumes "set js \<subseteq> R"
+  assumes "bipartite M L R"
+  shows "bipartite (ranking' r G M js) L R"
+  using assms
+  by (induction js arbitrary: M)
+     (auto simp: ranking_Cons dest: bipartite_step)
+
+lemma ranking_subgraph:
+  assumes "r \<in> preorders_on L"
+  assumes "set js \<subseteq> R"
+  shows "ranking r G js \<subseteq> G"
+  using assms graph
+  by (intro ranking_subgraph)
+     (auto intro: preorder_on_neighborsI ranking_subgraph)
+
+lemma the_ranking_match_left:
+  assumes "\<forall>j\<in>set js. preorder_on' {i. {i,j} \<in> G} r"
+  assumes "matching M"
+  assumes "bipartite M L R"
+  assumes j_matched: "j \<in> Vs (ranking' r G M js)"
+  assumes "j \<in> R"
+  assumes "set js \<subseteq> R"
+  shows "(THE i. {i,j} \<in> ranking' r G M js) \<in> L"
+proof -
+  from j_matched obtain e where e: "e \<in> ranking' r G M js" "j \<in> e"
+    by (auto elim: vs_member_elim)
+
+  from assms have bipartite: "bipartite (ranking' r G M js) L R"
+    by (auto intro: bipartite_ranking)
+
+  with e obtain u v where uv: "e = {u,v}" "u \<noteq> v" "u \<in> L" "v \<in> R"
+    by (auto elim: bipartite_edgeE)
+
+  with bipartite \<open>j \<in> R\<close> e have "v = j"
+    by (auto intro: bipartite_eqI)
+
+  with e uv finite_vs assms have "(THE i. {i,j} \<in> ranking' r G M js) = u"
+    by (intro the_match matching_ranking)
+       auto
+
+  with \<open>u \<in> L\<close> show ?thesis
+    by blast
+qed
 
 end
 end
