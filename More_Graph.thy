@@ -137,6 +137,9 @@ lemma the_match'': "matching M \<Longrightarrow> {u,v} \<in> M \<Longrightarrow>
 lemma the_match''': "matching M \<Longrightarrow> {u,v} \<in> M \<Longrightarrow> (THE v. {v,u} \<in> M) = v"
   by (auto dest: the_match' edge_commute)
 
+lemma matching_partner_eqI: "matching M \<Longrightarrow> {i,j} \<in> M \<Longrightarrow> {i',j} \<in> M \<Longrightarrow> i = i'"
+  by (metis doubleton_eq_iff insertI1 matching_unique_match)
+
 lemma the_edge:
   assumes "matching M"
   assumes "e \<in> M"

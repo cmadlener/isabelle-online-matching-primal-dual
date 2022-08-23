@@ -7,29 +7,6 @@ begin
 
 hide_const Finite_Cartesian_Product.vec Finite_Cartesian_Product.vec.vec_nth
 
-lemma split_list_distinct:
-  assumes "distinct xs"
-  assumes "x \<in> set xs"
-  shows "\<exists>ys zs. xs = ys @ x # zs \<and> x \<notin> set ys \<and> x \<notin> set zs"
-  using assms
-proof (induction xs)
-  case Nil
-  then show ?case
-    by simp
-next
-  case (Cons a xs)
-  show ?case
-  proof cases
-    assume "x = a"
-    with Cons show ?case
-      by fastforce
-  next
-    assume "x \<noteq> a"
-    with Cons show ?case
-      by (fastforce intro!: Cons_eq_appendI)
-  qed
-qed
-
 lemma restrict_space_UNIV[simp]: "restrict_space M UNIV = M"
   unfolding restrict_space_def
   by (auto simp: measure_of_of_measure)
@@ -259,7 +236,7 @@ lemma preorder_on_neighbors_linorder_from_keys[intro]:
   assumes "j \<in> R"
   shows "preorder_on' {i. {i,j} \<in> G} (linorder_from_keys L Y)"
   using assms perm
-  by (auto intro: preorder_on_neighborsI[where js = \<pi>] dest: permutations_of_setD)
+  by (auto intro: preorder_on_neighborsI dest: permutations_of_setD)
 
 lemma ranking_measurable:
   assumes "set js \<subseteq> R"
@@ -273,7 +250,7 @@ next
   case 2
   from finite_subsets \<open>set js \<subseteq> R\<close> show ?case
     by (subst measurable_count_space_eq2)
-       (auto dest: ranking_subgraph)
+       (auto dest: ranking_subgraph' preorders_onD)
 qed
 
 lemma in_vertices_borel_measurable_count_space:
@@ -373,7 +350,7 @@ proof
       assume "Y i' < Y ?i"
       with 3 i_unmatched \<open>j \<in> R\<close> have "(i',?i) \<in> r \<and> (?i,i') \<notin> r"
         unfolding r_def linorder_from_keys_def
-        by (auto dest: neighbors_right_subset_left)
+        by (auto dest: neighbors_right_subset_left[OF subset_refl])
 
       with 3 i_min show False
         by blast
@@ -480,7 +457,7 @@ proof -
     case (3 i)
     with \<open>A \<in> sets borel\<close> show ?case
       by measurable
-         (use 3 \<open>j \<in> R\<close> in \<open>auto dest: neighbors_right_subset_left\<close>)
+         (use 3 \<open>j \<in> R\<close> in \<open>auto dest: neighbors_right_subset_left[OF subset_refl]\<close>)
   next
     case (5 i i')
     with set_pre show ?case
@@ -488,11 +465,11 @@ proof -
   next
     case (6 i i')
     with \<open>j \<in> R\<close> have "i \<in> L" "i' \<in> L"
-      by (auto dest: neighbors_right_subset_left)
+      by (auto dest: neighbors_right_subset_left[OF subset_refl])
 
     then show ?case
       by measurable
-  qed (rule finite_neighbors)+
+  qed (rule finite_neighbors[OF subset_refl])+
 qed
 
 lemma dual_component_online_borel_measurable:

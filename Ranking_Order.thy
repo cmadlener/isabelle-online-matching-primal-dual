@@ -8,8 +8,32 @@ sledgehammer_params [provers = cvc4 vampire verit e spass z3 zipperposition]
 
 declare vs_member_intro[rule del]
 
+lemma split_list_distinct:
+  assumes "distinct xs"
+  assumes "x \<in> set xs"
+  shows "\<exists>ys zs. xs = ys @ x # zs \<and> x \<notin> set ys \<and> x \<notin> set zs"
+  using assms
+proof (induction xs)
+  case Nil
+  then show ?case
+    by simp
+next
+  case (Cons a xs)
+  show ?case
+  proof cases
+    assume "x = a"
+    with Cons show ?case
+      by fastforce
+  next
+    assume "x \<noteq> a"
+    with Cons show ?case
+      by (fastforce intro!: Cons_eq_appendI)
+  qed
+qed
+
 text \<open>Weaker versions of \<^term>\<open>refl_on\<close> (and \<^term>\<open>preorder_on\<close>/\<^term>\<open>linorder_on\<close>) that don't enforce
-that the relation is only defined on the given set.\<close>
+that the relation is only defined on the given set. Alternative would be to weaken all lemmas
+by using stronger assumptions.\<close>
 definition "refl_on' S r \<longleftrightarrow> (\<forall>x\<in>S. (x,x) \<in> r)"
 definition "preorder_on' S r \<longleftrightarrow> refl_on' S r \<and> trans r"
 definition "linorder_on' S r \<longleftrightarrow> refl_on' S r \<and> antisym r \<and> trans r \<and> total_on S r"
@@ -307,7 +331,7 @@ lemma step_insertI:
 
 lemma step_subgraph:
   assumes fin: "finite (Vs G)"
-  assumes preorder: "preorder_on' {i. {i,j} \<in> G} r" (is "preorder_on' ?N r")
+  assumes preorder: "preorder_on' {i. {i,j} \<in> G} r"
   assumes "M \<subseteq> G" 
   shows "step r G M j \<subseteq> G"
   using preorder fin
@@ -393,8 +417,8 @@ sublocale graph_abs G
   using bipartite_graph finite_L finite_R
   by (intro finite_parts_bipartite_graph_abs)
 
-lemmas finite_graph = finite_E
-lemmas finite_vs = graph[THEN conjunct2]
+lemmas finite_graph[intro,simp] = finite_E
+lemmas finite_vs[intro] = graph[THEN conjunct2]
 
 lemma finite_vs_subgraph: "H \<subseteq> G \<Longrightarrow> finite (Vs H)"
   using finite_vs
@@ -403,26 +427,25 @@ lemma finite_vs_subgraph: "H \<subseteq> G \<Longrightarrow> finite (Vs H)"
 lemma finite_subsets: "finite {M. M \<subseteq> G}"
   using finite_graph by blast
 
-lemma preorder_on_neighborsI:
-  assumes "H \<subseteq> G"
-  assumes "set js \<subseteq> R"
-  assumes "r \<in> preorders_on L"
-  assumes "j \<in> set js"
-  shows "preorder_on' {i. {i,j} \<in> H} r"
-proof -
-  from \<open>r \<in> preorders_on L\<close> have preorder: "preorder_on' L r"
-    by (auto dest: preorders_onD intro: preorder_on_imp_preorder_on')
-
-  from assms bipartite_graph have "{i. {i,j} \<in> H} \<subseteq> L"
-    by (auto dest: bipartite_edgeD)
-
-  with preorder show ?thesis
-    by (auto intro: preorder_on'_subset)
-qed
-
 lemma neighbors_right_subset_left: "H \<subseteq> G \<Longrightarrow> j \<in> R \<Longrightarrow> {i. {i,j} \<in> H} \<subseteq> L"
   using bipartite_graph
   by (auto dest: bipartite_edgeD)
+
+lemma preorder_on_neighborsI:
+  assumes "H \<subseteq> G"
+  assumes "preorder_on L r"
+  assumes "j \<in> R"
+  shows "preorder_on' {i. {i,j} \<in> H} r"
+  using assms
+  by (auto dest: preorder_on_imp_preorder_on' neighbors_right_subset_left intro: preorder_on'_subset)
+
+lemma linorder_on_neighborsI:
+  assumes "H \<subseteq> G"
+  assumes "linorder_on L r"
+  assumes "j \<in> R"
+  shows "linorder_on' {i. {i,j} \<in> H} r"
+  using assms
+  by (auto dest: linorder_on_imp_linorder_on' neighbors_right_subset_left intro: linorder_on'_subset)
 
 lemma finite_neighbors:
   "H \<subseteq> G \<Longrightarrow> finite {i. {i,j} \<in> H}"
@@ -478,7 +501,7 @@ proof (induction js arbitrary: M)
   case (Cons j' js)
 
   then have "j \<notin> Vs (step r H M j')"
-    by (intro unmatched_R_in_step_if preorder_on_neighborsI[where js = "j'#js"] preorders_onI)
+    by (intro unmatched_R_in_step_if preorder_on_neighborsI preorders_onI)
        auto
 
   with Cons show ?case
@@ -507,7 +530,7 @@ lemma bipartite_ranking:
 
 lemma ranking_subgraph:
   assumes "H \<subseteq> G"
-  assumes "r \<in> preorders_on L"
+  assumes "preorder_on L r"
   assumes "set js \<subseteq> R"
   shows "ranking r H js \<subseteq> H"
   using assms graph
@@ -516,7 +539,7 @@ lemma ranking_subgraph:
 
 lemma ranking_subgraph':
   assumes "H \<subseteq> G"
-  assumes "r \<in> preorders_on L"
+  assumes "preorder_on L r"
   assumes "set js \<subseteq> R"
   shows "e \<in> ranking r H js \<Longrightarrow> e \<in> H"
   using assms
@@ -543,7 +566,7 @@ proof -
   with bipartite \<open>j \<in> R\<close> e have "v = j"
     by (auto intro: bipartite_eqI)
 
-  with e uv finite_vs assms have "(THE i. {i,j} \<in> ranking' r G M js) = u"
+  with e uv assms have "(THE i. {i,j} \<in> ranking' r G M js) = u"
     by (intro the_match matching_ranking)
        auto
 
@@ -605,7 +628,7 @@ proof -
           by (auto dest: linorder_on_imp_linorder_on' intro: linorder_on'_subset)
       next
         case 2
-        from finite_vs show ?case
+        show ?case
           by (auto intro: finite_subset)
       next
         case 3
@@ -674,8 +697,8 @@ proof -
     by (intro bipartite_subgraph[OF bipartite_js])
        (auto simp: js_split ranking_append intro: ranking_mono)
 
-  from finite_vs preorder_neighbors have "matching (ranking r (G \<setminus> {i}) js)"
-    by (auto intro: matching_ranking)
+  from preorder_neighbors have "matching (ranking r (G \<setminus> {i}) js)"
+    by (auto intro!: matching_ranking)
 
   from \<open>i \<in> L\<close> \<open>i' \<in> L\<close> \<open>j \<in> R\<close> bipartite_graph have "i \<noteq> j" "i' \<noteq> j"
     by (auto dest: bipartite_disjointD)
@@ -859,7 +882,7 @@ proof -
 
           assume "i \<noteq> ?i'"
 
-          from linorder i_not_pre \<open>{i,j} \<in> G\<close> \<open>j \<in> R\<close> finite_vs have "?i' \<in> ?ns"
+          from linorder i_not_pre \<open>{i,j} \<in> G\<close> \<open>j \<in> R\<close> have "?i' \<in> ?ns"
             by (intro min_if_finite)
                (auto intro: preorder_on'_subset[OF _ unmatched_neighbors_L]
                      dest: linorder_on_imp_preorder_on preorder_on_imp_preorder_on')
@@ -939,6 +962,221 @@ next
   case False
   with assms show ?thesis
     by (auto intro: dominance_order_unmatched)
+qed
+
+lemma monotonicity_order_step:
+  assumes "i \<in> L" "j \<in> R"
+
+  assumes "j \<notin> Vs M" "j \<notin> Vs M'"
+
+  assumes linorder: "linorder_on' {i. {i, j} \<in> G} r"
+  assumes subset_before: "L - {i} - Vs M' \<subseteq> L - Vs M"
+  shows "L - {i} - Vs (step r (G \<setminus> {i}) M' j) \<subseteq> L - Vs (step r G M j)"
+  using linorder_on'_imp_preorder_on'[OF linorder] finite_vs
+proof (cases rule: step_cases[where M = M])
+  case no_neighbor
+  with bipartite_graph subset_before \<open>i \<in> L\<close> \<open>j \<in> R\<close> have "{i'. i' \<notin> Vs M' \<and> {i',j} \<in> G \<setminus> {i}} = {}"
+    apply auto
+    by (smt (verit, best) Diff_iff bipartite_edgeD(4) edges_are_Vs(1) remove_vertices_not_vs remove_vertices_subgraph' subset_iff)
+
+  with no_neighbor subset_before show ?thesis
+    by (simp add: step_def)
+next
+  case new_match
+  note new_match_orig = this
+
+  let ?min = "min_on_rel {i. i \<notin> Vs M \<and> {i,j} \<in> G} r"
+
+  from new_match have min_available_if: "?min \<notin> Vs M' \<Longrightarrow> ?min \<noteq> i \<Longrightarrow> ?min \<in> {i'. i' \<notin> Vs M' \<and> {i',j} \<in> G \<setminus> {i}}"
+    apply (auto intro!: in_remove_verticesI)
+    by (metis assms(1) assms(2) bipartite_graph bipartite_vertex(1) edges_are_Vs(2))
+
+  from linorder have "preorder_on' {i'. {i', j} \<in> G \<setminus> {i}} r" "finite (Vs (G \<setminus> {i}))"
+    by (auto intro: preorder_on'_subset dest: remove_vertices_subgraph' linorder_on'_imp_preorder_on')
+
+  then show ?thesis
+  proof (cases rule: step_cases[where M = M'])
+    case no_neighbor
+
+    with min_available_if subset_before new_match show ?thesis
+      apply (auto simp add: step_def vs_insert)
+      by (meson assms(2) bipartite_graph bipartite_vertex(1) edges_are_Vs(2))
+  next
+    case j_matched
+    with \<open>j \<notin> Vs M'\<close> show ?thesis
+      by blast
+  next
+    case new_match
+
+    let ?min' = "min_on_rel {i'. i' \<notin> Vs M' \<and> {i',j} \<in> G \<setminus> {i}} r"
+
+    from new_match have "?min' \<in> {i. i \<notin> Vs M \<and> {i,j} \<in> G}"
+      apply (auto dest: remove_vertices_subgraph')
+      by (smt (verit) DiffE DiffI assms(2) bipartite_edgeD(4) bipartite_graph edges_are_Vs(1) in_mono remove_vertices_not_vs remove_vertices_subgraph' subset_before)
+
+    have "?min \<in> {i'. i' \<notin> Vs M' \<and> {i',j} \<in> G \<setminus> {i}} \<Longrightarrow> ?min = ?min'"
+    proof -
+      assume "?min \<in> {i'. i' \<notin> Vs M' \<and> {i',j} \<in> G \<setminus> {i}}"
+
+      with linorder have "(?min', ?min) \<in> r"
+        by (intro min_on_rel_least linorder_on'_subset[where S = "{i. {i,j} \<in> G}" and T = "{i'. i' \<notin> Vs M' \<and> {i', j} \<in> G \<setminus> {i}}"])
+           (auto dest: remove_vertices_subgraph' intro: finite_vs_subgraph)
+
+      from linorder \<open>?min' \<in> {i. i \<notin> Vs M \<and> {i,j} \<in> G}\<close> have "(?min, ?min') \<in> r"
+        by (intro min_on_rel_least linorder_on'_subset[where S = "{i. {i,j} \<in> G}" and T = "{i. i \<notin> Vs M \<and> {i,j} \<in> G}"])
+           (auto intro: finite_vs_subgraph)
+
+      with linorder \<open>(?min', ?min) \<in> r\<close> show "?min = ?min'"
+        unfolding linorder_on'_def antisym_def
+        by blast
+    qed
+
+    with new_match new_match_orig subset_before min_available_if show ?thesis
+      by (auto simp: step_def vs_insert)
+  qed
+qed (use \<open>j \<notin> Vs M\<close> in blast)
+
+lemma monotonicity_order_ranking:
+  assumes "i \<in> L"
+  assumes "set js \<subseteq> R" "distinct js"
+  assumes "set js \<inter> Vs M = {}" "set js \<inter> Vs M' = {}"
+  assumes "\<forall>j \<in> set js. linorder_on' {i. {i,j} \<in> G} r"
+
+  assumes "L - {i} - Vs M' \<subseteq> L - Vs M"
+  shows "L - {i} - (Vs (ranking' r (G \<setminus> {i}) M' js)) \<subseteq> L - (Vs (ranking' r G M js))"
+  using assms
+proof (induction js arbitrary: M' M)
+  case (Cons j js)
+
+  from Cons.prems have mono_step: "L - {i} - Vs (step r (G \<setminus> {i}) M' j) \<subseteq> L - Vs (step r G M j)"
+    by (intro monotonicity_order_step) auto
+
+  from Cons.prems bipartite_graph have j'_not_in_step: "j' \<in> set js \<Longrightarrow> j' \<notin> Vs (step r G M j)" for j'
+    by (intro unmatched_R_in_step_if)
+       (auto intro: linorder_on'_imp_preorder_on' dest: bipartite_disjointD)
+
+  from Cons.prems bipartite_graph have "j' \<in> set js \<Longrightarrow> j' \<notin> Vs (step r (G \<setminus> {i}) M' j)" for j'
+    by (intro unmatched_R_in_step_if)
+       (auto intro: linorder_on'_imp_preorder_on' preorder_on'_subset dest: bipartite_disjointD remove_vertices_subgraph')
+
+  with Cons.prems mono_step j'_not_in_step show ?case
+    by (simp only: ranking_Cons, intro Cons.IH unmatched_R_in_step_if)
+       auto
+qed simp
+
+
+lemma monotonicity_order_matched_matched:
+  assumes linorder: "linorder_on L r"
+  assumes "{i,j} \<in> G"
+  assumes "i \<in> L" "j \<in> set js"
+  assumes "set js \<subseteq> R" "distinct js"
+  assumes "set js \<inter> Vs M = {}" "set js \<inter> Vs M' = {}"
+  
+  assumes "j \<notin> Vs M" "j \<notin> Vs M'"
+  assumes "L - {i} - Vs M' \<subseteq> L - Vs M"
+
+  assumes "matching M" "matching M'"
+
+  assumes i'j: "{i',j} \<in> ranking' r G M js"
+  assumes i''j: "{i'',j} \<in> (ranking' r (G \<setminus> {i}) M' js)"
+  shows "(i', i'') \<in> r"
+  using assms
+proof -
+  from \<open>j \<in> set js\<close> \<open>distinct js\<close> obtain pre suff where js_decomp: "js = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
+    by (auto dest: split_list_distinct)
+
+  from \<open>j \<in> set js\<close> \<open>set js \<subseteq> R\<close> have "j \<in> R"
+    by blast
+
+  let ?ranking_pre = "ranking' r G M pre"
+  and ?ranking_pre' = "ranking' r (G \<setminus> {i}) M' pre"
+
+  from js_decomp assms have "L - {i} - Vs ?ranking_pre' \<subseteq> L - Vs ?ranking_pre"
+    by (intro monotonicity_order_ranking) (auto intro: linorder_on_neighborsI)
+
+  from bipartite_graph linorder js_decomp \<open>set js \<subseteq> R\<close> \<open>j \<notin> Vs M\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
+    by (intro unmatched_R_in_ranking_if)
+       (auto dest: linorder_on_imp_preorder_on bipartite_disjointD)
+
+  let ?ns = "{i. i \<notin> Vs ?ranking_pre \<and> {i,j} \<in> G}"
+  let ?min = "min_on_rel ?ns r"
+
+  have "?ns \<noteq> {}"
+  proof (rule ccontr, simp only: not_not)
+    assume "?ns = {}"
+    then have "step r G ?ranking_pre j = ?ranking_pre"
+      by (simp add: step_def)
+
+    with bipartite_graph linorder j_unmatched_pre js_decomp \<open>set js \<subseteq> R\<close> have "j \<notin> Vs (ranking' r G M js)"
+      by (simp only: ranking_append ranking_Cons)
+         (rule unmatched_R_in_ranking_if, auto dest: linorder_on_imp_preorder_on bipartite_disjointD)
+
+    with i'j show False
+      by (auto dest: edges_are_Vs)
+  qed
+
+  with linorder \<open>j \<in> R\<close> have "?min \<in> ?ns"
+    by (intro min_if_finite)
+       (auto dest: linorder_on_imp_preorder_on preorder_on_imp_preorder_on' intro: preorder_on_neighborsI preorder_on'_subset)
+    
+  with j_unmatched_pre have "step r G ?ranking_pre j = insert {?min, j} ?ranking_pre"
+    by (auto simp: step_def)
+  
+  with js_decomp have "{?min, j} \<in> ranking' r G M js"
+    by (auto simp: ranking_append ranking_Cons intro: ranking_mono)
+
+  with i'j linorder \<open>set js \<subseteq> R\<close> \<open>matching M\<close> have "i' = ?min"
+    by (auto intro: matching_partner_eqI matching_ranking preorder_on_neighborsI dest: linorder_on_imp_preorder_on)
+
+
+
+  from bipartite_graph linorder js_decomp \<open>set js \<subseteq> R\<close> \<open>j \<notin> Vs M'\<close> have j_unmatched_pre': "j \<notin> Vs ?ranking_pre'"
+    by (intro unmatched_R_in_ranking_if)
+       (auto dest: remove_vertices_subgraph' linorder_on_imp_preorder_on bipartite_disjointD)
+
+  let ?ns' = "{i'. i' \<notin> Vs ?ranking_pre' \<and> {i',j} \<in> G \<setminus> {i}}"
+  let ?min' = "min_on_rel ?ns' r"
+
+  have "?ns' \<noteq> {}"
+  proof (rule ccontr, simp only: not_not)
+    assume "?ns' = {}"
+    then have "step r (G \<setminus> {i}) ?ranking_pre' j = ?ranking_pre'"
+      by (simp add: step_def)
+
+    with bipartite_graph linorder j_unmatched_pre' js_decomp \<open>set js \<subseteq> R\<close> have "j \<notin> Vs (ranking' r (G \<setminus> {i}) M' js)"
+      by (simp only: ranking_append ranking_Cons)
+         (rule unmatched_R_in_ranking_if, auto dest: linorder_on_imp_preorder_on bipartite_disjointD remove_vertices_subgraph')
+
+    with i''j show False
+      by (auto dest: edges_are_Vs)
+  qed
+
+  with linorder \<open>j \<in> R\<close> have "?min' \<in> ?ns'"
+    by (intro min_if_finite)
+       (auto dest: linorder_on_imp_preorder_on preorder_on_imp_preorder_on' remove_vertices_subgraph' 
+             intro: preorder_on_neighborsI preorder_on'_subset)
+
+  with j_unmatched_pre' have "step r (G \<setminus> {i}) ?ranking_pre' j = insert {?min', j} ?ranking_pre'"
+    by (auto simp: step_def)
+
+  with js_decomp have "{?min', j} \<in> ranking' r (G \<setminus> {i}) M' js"
+    by (auto simp: ranking_append ranking_Cons intro: ranking_mono)
+
+  with linorder \<open>set js \<subseteq> R\<close> \<open>matching M'\<close> have "i'' = ?min'"
+    by (auto intro: matching_partner_eqI[OF _ i''j] matching_ranking preorder_on_neighborsI
+             dest: linorder_on_imp_preorder_on remove_vertices_subgraph')
+
+  from \<open>?min' \<in> ?ns'\<close> have "?min' \<in> ?ns"
+    apply (auto dest: remove_vertices_subgraph')
+    apply (smt (verit) DiffE DiffI \<open>L - {i} - Vs (ranking' r (G \<setminus> {i}) M' pre) \<subseteq> L - Vs (ranking' r G M pre)\<close> \<open>j \<in> R\<close> bipartite_edgeD(4) bipartite_graph edges_are_Vs(1) remove_vertices_not_vs remove_vertices_subgraph' subsetD)
+    done
+
+  with linorder \<open>?min \<in> ?ns\<close> \<open>j \<in> R\<close> have "(?min, ?min') \<in> r"
+    by (intro min_on_rel_least)
+       (auto dest: linorder_on_imp_linorder_on' intro: linorder_on'_subset linorder_on_neighborsI)
+
+  with \<open>i' = ?min\<close> \<open>i'' = ?min'\<close> show "(i',i'') \<in> r"
+    by simp
 qed
 
 end
