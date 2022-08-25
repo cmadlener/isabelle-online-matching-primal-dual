@@ -169,8 +169,8 @@ definition y\<^sub>c :: "('a \<Rightarrow> real) \<Rightarrow> 'a list \<Rightar
     else 1"
 
 lemma n_sum: "n = card L + card R"
-  using bipartite_graph parts_minimal finite_L finite_R
-  by (auto dest: bipartite_disjointD simp: card_Un_disjoint n_def)
+  using parts_minimal finite_L finite_R
+  by (auto simp: card_Un_disjoint n_def)
 
 lemma geq_L_less_n_less_R: "card L \<le> i \<Longrightarrow> i < n \<Longrightarrow> i - card L < card R"
   by (auto simp: n_sum)
@@ -181,16 +181,8 @@ lemma geq_L_less_n_less_R': "\<not> i < card L \<Longrightarrow> i < n \<Longrig
 lemma Vs_cases: 
   assumes "x \<in> Vs G"
   obtains "x \<in> L \<and> x \<notin> R" | "x \<in> R \<and> x \<notin> L"
-  using assms parts_minimal bipartite_graph
-  by (auto dest: bipartite_disjointD)
-
-lemma parts_disjoint[intro,simp]: "L \<inter> R = {}"
-  using bipartite_graph
-  by (auto dest: bipartite_disjointD)
-
-lemma bipartite_FalseD[dest]:  "x \<in> L \<Longrightarrow> x \<in> R \<Longrightarrow> False"
-  using bipartite_graph
-  by (auto dest: bipartite_disjointD)
+  using assms parts_minimal
+  by auto
 
 lemma i_cases:
   assumes "i < n"
@@ -227,9 +219,8 @@ lemma
 lemma
   shows Vs_enum_R: "r \<in> R \<Longrightarrow> Vs_enum r = to_nat_on R r + card L"
     and "card L \<le> i \<Longrightarrow> Vs_enum_inv i = from_nat_into R (i - card L)"
-  using bipartite_graph
   unfolding Vs_enum_def Vs_enum_inv_def
-  by (auto dest: bipartite_disjointD)
+  by auto
 
 lemma Vs_enum_less_n: "x \<in> Vs G \<Longrightarrow> Vs_enum x < n"
   by (auto elim!: Vs_cases simp: Vs_enum_L Vs_enum_R intro: L_enum_less_n R_enum_less_n)
@@ -285,7 +276,7 @@ lemma dominance:
   shows "i \<in> Vs (ranking (linorder_from_keys L Y) G \<pi>)"
 proof (intro dominance_order[where j = j], goal_cases)
   case 6
-  with perm bipartite_graph \<open>Y i < y\<^sub>c Y \<pi> i j\<close> \<open>i \<in> L\<close> \<open>j \<in> R\<close> show ?case
+  with perm \<open>Y i < y\<^sub>c Y \<pi> i j\<close> \<open>i \<in> L\<close> \<open>j \<in> R\<close> show ?case
     by (intro linorder_from_keys_lessI the_ranking_match_left ballI preorder_on_neighborsI)
        (auto simp: y\<^sub>c_def dest: remove_vertices_subgraph' permutations_of_setD)
 qed (use assms perm in \<open>(blast dest: permutations_of_setD)+\<close>)
@@ -314,11 +305,11 @@ proof (cases "j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \
     let ?ranking_pre = "ranking (linorder_from_keys L Y) G pre"
     let ?ranking_pre' = "ranking (linorder_from_keys L Y) (G \<setminus> {i}) pre"
 
-    from \<pi>_decomp perm bipartite_graph \<open>j \<in> R\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
+    from \<pi>_decomp perm \<open>j \<in> R\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
       by (intro unmatched_R_in_ranking_if)
          (auto dest: permutations_of_setD)
 
-    from \<pi>_decomp perm bipartite_graph \<open>j \<in> R\<close> have j_unmatched_pre': "j \<notin> Vs ?ranking_pre'"
+    from \<pi>_decomp perm \<open>j \<in> R\<close> have j_unmatched_pre': "j \<notin> Vs ?ranking_pre'"
       by (intro unmatched_R_in_ranking_if)
          (auto dest: permutations_of_setD remove_vertices_subgraph')
 
@@ -370,8 +361,8 @@ proof (cases "j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \
       by (auto simp: ranking_append ranking_Cons intro: ranking_mono_vs)
   qed
 
-  from perm bipartite_graph have bipartite_M: "bipartite ?M L R" and bipartite_M': "bipartite ?M' L R"
-    by (auto intro!: bipartite_ranking dest: permutations_of_setD bipartite_disjointD remove_vertices_subgraph')
+  from perm have bipartite_M: "bipartite ?M L R" and bipartite_M': "bipartite ?M' L R"
+    by (auto intro!: bipartite_ranking dest: permutations_of_setD remove_vertices_subgraph')
 
   with j_matched True obtain i' i'' where edges: "{i',j} \<in> ?M" "{i'',j} \<in> ?M'"
     by (meson finite_L finite_R finite_parts_bipartite_graph_abs graph_abs_vertex_edgeE')
@@ -405,9 +396,9 @@ next
   proof (cases "j \<in> Vs ?M")
     case True
 
-    with linorder perm bipartite_graph \<open>j \<in> R\<close> have "(THE l. {l, j} \<in> ranking (linorder_from_keys L Y) G \<pi>) \<in> L"
+    with linorder perm \<open>j \<in> R\<close> have "(THE l. {l, j} \<in> ranking (linorder_from_keys L Y) G \<pi>) \<in> L"
       by (intro the_ranking_match_left)
-         (auto dest: permutations_of_setD bipartite_disjointD)
+         (auto dest: permutations_of_setD)
 
     with True j_unmatched' index_j F_gt_0 \<open>{i,j} \<in> G\<close> \<open>Y \<in> L \<rightarrow> {0..1}\<close>show ?thesis
       unfolding y\<^sub>c_def dual_sol_def
@@ -472,7 +463,7 @@ proof
     unfolding M'_def
     by (simp add: ranking_append)
 
-  from \<pi>_decomp \<open>j \<in> R\<close> bipartite_graph perm have "j \<notin> Vs M'"
+  from \<pi>_decomp \<open>j \<in> R\<close> perm have "j \<notin> Vs M'"
     unfolding M'_def r_def
     by (intro unmatched_R_in_ranking_if)
        (auto dest: permutations_of_setD)
@@ -488,9 +479,9 @@ proof
       unfolding ranking'_def M'_def
       by simp
 
-    from \<pi>_decomp \<open>j \<in> R\<close> \<open>j \<notin> Vs M'\<close> perm step_unchanged bipartite_graph have "j \<notin> Vs ?M"
+    from \<pi>_decomp \<open>j \<in> R\<close> \<open>j \<notin> Vs M'\<close> perm step_unchanged have "j \<notin> Vs ?M"
       by (subst M, intro unmatched_R_in_ranking_if, unfold r_def)
-         (auto dest: permutations_of_setD bipartite_disjointD)
+         (auto dest: permutations_of_setD)
     
     with j_matched show False
       by blast
@@ -501,12 +492,12 @@ proof
 
   from neighbor_ex \<open>j \<in> R\<close> bipartite_graph have i_unmatched: "?i \<in> {i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
     by (intro min_if_finite preorder_on'_subset[where S = L and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"] finite_unmatched_neighbors)
-       (auto simp: r_def intro: preorder_on_imp_preorder_on'  dest: bipartite_edgeD)
+       (auto simp: r_def intro: preorder_on_imp_preorder_on' dest: bipartite_edgeD)
 
   from neighbor_ex \<open>j \<in> R\<close> bipartite_graph have i_min: 
     "\<not>(\<exists>i'\<in>{i. i \<notin> Vs M' \<and> {i,j} \<in> G}. (i',?i) \<in> r \<and> (?i,i') \<notin> r)"
     by (intro min_if_finite preorder_on'_subset[where S = L and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"] finite_unmatched_neighbors)
-       (auto simp: r_def intro: preorder_on_imp_preorder_on'  dest: bipartite_edgeD)
+       (auto simp: r_def intro: preorder_on_imp_preorder_on' dest: bipartite_edgeD)
 
 
   have the_i: "(THE i. {i,j} \<in> ?M) = ?i"
@@ -548,10 +539,10 @@ next
     unfolding ranking'_def M'_def
     by simp
 
-  from \<pi>_decomp \<open>j \<in> R\<close> bipartite_graph perm have j_unmatched_before: "j \<notin> Vs M'"
+  from \<pi>_decomp \<open>j \<in> R\<close> perm have j_unmatched_before: "j \<notin> Vs M'"
     unfolding M'_def r_def
     by (intro unmatched_R_in_ranking_if)
-       (auto dest: bipartite_disjointD permutations_of_setD)
+       (auto dest: permutations_of_setD)
 
   let ?min = "min_on_rel ?ns r"
 
@@ -706,10 +697,10 @@ lemma dual_sol_from_to:
   assumes Y_nonneg: "\<And>i. i \<in> L \<Longrightarrow> 0 \<le> Y i"
   assumes Y_less_eq_One: "\<And>i. i \<in> L \<Longrightarrow> Y i \<le> 1"
   shows "($) (dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>)) \<in> {0..<n} \<rightarrow> {0..1/F}"
-  using F_gt_0 perm bipartite_graph
+  using F_gt_0 perm
   unfolding dual_sol_def
   apply (auto intro!: g_nonnegI g_less_eq_OneI Y_nonneg Y_less_eq_One elim!: Vs_enum_inv_leftE)
-     apply (auto elim!: Vs_enum_inv_rightE intro!: the_ranking_match_left bipartite_empty  dest: permutations_of_setD bipartite_disjointD)
+     apply (auto elim!: Vs_enum_inv_rightE intro!: the_ranking_match_left bipartite_empty  dest: permutations_of_setD)
   done
 
 lemma dual_sol_from_to_if_funcset:
