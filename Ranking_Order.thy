@@ -403,6 +403,14 @@ lemma edge_in_rankingE:
   using assms
   by (auto dest: edge_in_ranking)
 
+lemma step_matches_if_possible:
+  assumes "j \<notin> Vs M"
+  assumes "{i,j} \<in> G"
+  assumes "i \<notin> Vs M"
+  shows "j \<in> Vs (step r G M j)"
+  using assms
+  by (cases M j G rule: step_cases')
+     (auto simp: step_def vs_insert)
 
 locale wf_ranking_order =
   fixes L :: "'a set" and R :: "'a set"
@@ -431,7 +439,7 @@ lemma neighbors_right_subset_left: "H \<subseteq> G \<Longrightarrow> j \<in> R 
   using bipartite_graph
   by (auto dest: bipartite_edgeD)
 
-lemma preorder_on_neighborsI:
+lemma preorder_on_neighborsI[intro]:
   assumes "H \<subseteq> G"
   assumes "preorder_on L r"
   assumes "j \<in> R"
@@ -439,7 +447,7 @@ lemma preorder_on_neighborsI:
   using assms
   by (auto dest: preorder_on_imp_preorder_on' neighbors_right_subset_left intro: preorder_on'_subset)
 
-lemma linorder_on_neighborsI:
+lemma linorder_on_neighborsI[intro]:
   assumes "H \<subseteq> G"
   assumes "linorder_on L r"
   assumes "j \<in> R"
@@ -546,18 +554,19 @@ lemma ranking_subgraph':
   by (auto dest: ranking_subgraph)
 
 lemma the_ranking_match_left:
-  assumes "\<forall>j\<in>set js. preorder_on' {i. {i,j} \<in> G} r"
+  assumes "H \<subseteq> G"
+  assumes "\<forall>j\<in>set js. preorder_on' {i. {i,j} \<in> H} r"
   assumes "matching M"
   assumes "bipartite M L R"
-  assumes j_matched: "j \<in> Vs (ranking' r G M js)"
+  assumes j_matched: "j \<in> Vs (ranking' r H M js)"
   assumes "j \<in> R"
   assumes "set js \<subseteq> R"
-  shows "(THE i. {i,j} \<in> ranking' r G M js) \<in> L"
+  shows "(THE i. {i,j} \<in> ranking' r H M js) \<in> L"
 proof -
-  from j_matched obtain e where e: "e \<in> ranking' r G M js" "j \<in> e"
+  from j_matched obtain e where e: "e \<in> ranking' r H M js" "j \<in> e"
     by (auto elim: vs_member_elim)
 
-  from assms have bipartite: "bipartite (ranking' r G M js) L R"
+  from assms have bipartite: "bipartite (ranking' r H M js) L R"
     by (auto intro: bipartite_ranking)
 
   with e obtain u v where uv: "e = {u,v}" "u \<noteq> v" "u \<in> L" "v \<in> R"
@@ -566,9 +575,9 @@ proof -
   with bipartite \<open>j \<in> R\<close> e have "v = j"
     by (auto intro: bipartite_eqI)
 
-  with e uv assms have "(THE i. {i,j} \<in> ranking' r G M js) = u"
-    by (intro the_match matching_ranking)
-       auto
+  with e uv assms have "(THE i. {i,j} \<in> ranking' r H M js) = u"
+    by (intro the_match matching_ranking finite_subset[OF Vs_subset finite_vs])
+        auto  
 
   with \<open>u \<in> L\<close> show ?thesis
     by blast
@@ -582,8 +591,7 @@ lemma step_remove_unmatched_eq:
   shows "step r (G \<setminus> {i}) M j = step r G M j"
 proof -
   from linorder \<open>j \<in> R\<close> have "preorder_on' {i. {i,j} \<in> G} r"
-    by (auto intro: preorder_on'_subset[OF _ neighbors_right_subset_left]
-             dest: linorder_on_imp_preorder_on preorder_on_imp_preorder_on')
+    by (auto dest: linorder_on_imp_preorder_on)
 
   from this finite_vs
   show ?thesis
@@ -684,7 +692,7 @@ proof -
 
   from linorder \<open>set js = R\<close> have preorder_neighbors:
     "j' \<in> set js \<Longrightarrow> preorder_on' {i'. {i', j'} \<in> G \<setminus> {i}} r" for j'
-    by (auto intro!: preorder_on_neighborsI dest: linorder_on_imp_preorder_on remove_vertices_subgraph')
+    by (auto dest: linorder_on_imp_preorder_on remove_vertices_subgraph')
 
   with \<open>set js = R\<close> linorder bipartite_graph have bipartite_js: "bipartite (ranking r (G \<setminus> {i}) js) L R"
     by (intro bipartite_ranking)

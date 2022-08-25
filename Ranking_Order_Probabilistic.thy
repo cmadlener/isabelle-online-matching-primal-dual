@@ -16,12 +16,20 @@ lemma borel_measurable_restrict_space_empty[simp,intro]:
   shows "f \<in> borel_measurable (restrict_space M {})"
   by (auto intro: borel_measurable_integrable simp: integrable_restrict_space)
 
-lemma linorder_from_keys_preorder_on[intro]: "preorder_on A (linorder_from_keys A f)"
+lemma preorder_on_linorder_from_keys[intro]: "preorder_on A (linorder_from_keys A f)"
   unfolding linorder_from_keys_def preorder_on_def
   by (auto simp: refl_on_def trans_def)
 
-lemma linorder_from_keys_preorder[intro]: "linorder_from_keys A f \<in> preorders_on A"
-  by (auto intro: preorders_onI)
+lemma linorder_from_keys_in_preorders_on[intro]: "linorder_from_keys A f \<in> preorders_on A"
+  by auto
+
+lemma linorder_from_keys_lessI:
+  assumes "f i < f j"
+  assumes "i \<in> A" "j \<in> A"
+  shows "(i,j) \<in> linorder_from_keys A f \<and> (j,i) \<notin> linorder_from_keys A f"
+  using assms
+  unfolding linorder_from_keys_def
+  by auto
 
 text \<open>Generalize @{thm measurable_linorder_from_keys_restrict} by Eberl from
  \<^term>\<open>count_space (Pow (A \<times> A))\<close> to \<^term>\<open>count_space (preorders_on A)\<close>. The original
@@ -154,6 +162,12 @@ definition dual_sol :: "('a \<Rightarrow> real) \<Rightarrow> 'a graph \<Rightar
     else 0
   )"
 
+definition y\<^sub>c :: "('a \<Rightarrow> real) \<Rightarrow> 'a list \<Rightarrow> 'a \<Rightarrow> 'a \<Rightarrow> real" where
+  "y\<^sub>c Y js i j \<equiv>
+    if j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) js)
+    then Y (THE i'. {i',j} \<in> ranking (linorder_from_keys L Y) (G \<setminus> {i}) js)
+    else 1"
+
 lemma n_sum: "n = card L + card R"
   using bipartite_graph parts_minimal finite_L finite_R
   by (auto dest: bipartite_disjointD simp: card_Un_disjoint n_def)
@@ -168,6 +182,14 @@ lemma Vs_cases:
   assumes "x \<in> Vs G"
   obtains "x \<in> L \<and> x \<notin> R" | "x \<in> R \<and> x \<notin> L"
   using assms parts_minimal bipartite_graph
+  by (auto dest: bipartite_disjointD)
+
+lemma parts_disjoint[intro,simp]: "L \<inter> R = {}"
+  using bipartite_graph
+  by (auto dest: bipartite_disjointD)
+
+lemma bipartite_FalseD[dest]:  "x \<in> L \<Longrightarrow> x \<in> R \<Longrightarrow> False"
+  using bipartite_graph
   by (auto dest: bipartite_disjointD)
 
 lemma i_cases:
@@ -216,8 +238,7 @@ lemma
   shows Vs_inv_enum[simp]: "x \<in> Vs G \<Longrightarrow> Vs_enum_inv (Vs_enum x) = x"
     and Vs_enum_inv[simp]: "i < n \<Longrightarrow> Vs_enum (Vs_enum_inv i) = i"
   using finite_L finite_R
-   apply (auto elim!: Vs_cases simp: Vs_enum_inv_def Vs_enum_def n_sum dest: L_enum_less_card intro!: from_nat_into)
-  by (metis Un_iff Vs_cases add.right_neutral card.empty from_nat_into parts_minimal)
+  by (auto elim!: Vs_cases simp: Vs_enum_inv_def Vs_enum_def n_sum dest: L_enum_less_card intro!: from_nat_into)
 
 lemma Vs_enum_inv_leftE:
   assumes "i < card L"
@@ -230,17 +251,180 @@ lemma Vs_enum_inv_rightE:
   assumes "\<not> i < card L"
   obtains j where "j \<in> R" "Vs_enum_inv i = j"
   using assms
-  by (metis Vs_enum_inv_def add.right_neutral card.empty from_nat_into n_sum)
+  by (metis Vs_enum_inv_def add.right_neutral card.empty from_nat_into n_sum)lemma g_nonnegI: "0 \<le> x \<Longrightarrow> x \<le> 1 \<Longrightarrow> 0 \<le> g x"
+  using g_from_to
+  by auto
+
+lemma g_less_eq_OneI: "0 \<le> x \<Longrightarrow> x \<le> 1 \<Longrightarrow> g x \<le> 1"
+  using g_from_to
+  by auto
+
+lemma div_F_nonneg[simp]: "0 \<le> x / F \<longleftrightarrow> 0 \<le> x"
+  using F_gt_0
+  by (simp add: zero_le_divide_iff)
+
+lemma div_F_less_eq_cancel[simp]: "x / F \<le> y / F \<longleftrightarrow> x \<le> y"
+  using F_gt_0
+  by (simp add: divide_le_cancel)
 
 lemma preorder_on_neighbors_linorder_from_keys[intro]:
+  assumes "H \<subseteq> G"
   assumes "j \<in> R"
-  shows "preorder_on' {i. {i,j} \<in> G} (linorder_from_keys L Y)"
+  shows "preorder_on' {i. {i,j} \<in> H} (linorder_from_keys L Y)"
   using assms perm
-  by (auto intro: preorder_on_neighborsI dest: permutations_of_setD)
+  by (auto dest: permutations_of_setD)
 
-lemma ranking_measurable:
+
+\<comment> \<open>Lemma 2 from DJK\<close>
+lemma dominance:
+  assumes "linorder_on L (linorder_from_keys L Y)"
+  assumes "i \<in> L" "j \<in> R"
+  assumes "{i,j} \<in> G"
+
+  assumes "Y i < y\<^sub>c Y \<pi> i j"
+  shows "i \<in> Vs (ranking (linorder_from_keys L Y) G \<pi>)"
+proof (intro dominance_order[where j = j], goal_cases)
+  case 6
+  with perm bipartite_graph \<open>Y i < y\<^sub>c Y \<pi> i j\<close> \<open>i \<in> L\<close> \<open>j \<in> R\<close> show ?case
+    by (intro linorder_from_keys_lessI the_ranking_match_left ballI preorder_on_neighborsI)
+       (auto simp: y\<^sub>c_def dest: remove_vertices_subgraph' permutations_of_setD)
+qed (use assms perm in \<open>(blast dest: permutations_of_setD)+\<close>)
+
+\<comment> \<open>Lemma 3 from DJK\<close>
+lemma monotonicity:
+  assumes linorder: "linorder_on L (linorder_from_keys L Y)"
+  assumes "Y \<in> L \<rightarrow> {0..1}"
+  assumes "i \<in> L" "j \<in> R"
+  assumes "{i,j} \<in> G"
+
+  shows "dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ Vs_enum j \<ge> (1 - g (y\<^sub>c Y \<pi> i j)) / F"
+    (is "dual_sol Y ?M $ ?j \<ge> ?\<beta>")
+proof (cases "j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \<pi>)")
+  case True
+  let ?M' = "ranking (linorder_from_keys L Y) (G \<setminus> {i}) \<pi>"
+
+  from \<open>{i,j} \<in> G\<close> \<open>j \<in> R\<close> have index_j: "?j < n" "\<not> ?j < card L"
+    by (auto intro: Vs_enum_less_n dest: edges_are_Vs, simp add: Vs_enum_R)
+
+  have j_matched: "j \<in> Vs ?M"
+  proof -
+    from perm \<open>j \<in> R\<close> obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
+      by (metis permutations_of_setD split_list_distinct)
+
+    let ?ranking_pre = "ranking (linorder_from_keys L Y) G pre"
+    let ?ranking_pre' = "ranking (linorder_from_keys L Y) (G \<setminus> {i}) pre"
+
+    from \<pi>_decomp perm bipartite_graph \<open>j \<in> R\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
+      by (intro unmatched_R_in_ranking_if)
+         (auto dest: permutations_of_setD)
+
+    from \<pi>_decomp perm bipartite_graph \<open>j \<in> R\<close> have j_unmatched_pre': "j \<notin> Vs ?ranking_pre'"
+      by (intro unmatched_R_in_ranking_if)
+         (auto dest: permutations_of_setD remove_vertices_subgraph')
+
+    let ?ns = "{i. i \<notin> Vs ?ranking_pre \<and> {i,j} \<in> G}"
+    and ?ns' = "{i'. i' \<notin> Vs ?ranking_pre' \<and> {i',j} \<in> G \<setminus> {i}}"
+
+    from \<open>j \<in> R\<close> have "?ns \<subseteq> L"
+      by (intro unmatched_neighbors_L subset_refl)
+
+    from \<open>j \<in> R\<close> have "?ns' \<subseteq> L - {i}"
+      apply (auto )
+       apply (metis equalityD2 mem_Collect_eq neighbors_right_subset_left remove_vertices_subgraph' subsetD)
+      by (meson edges_are_Vs(1) remove_vertices_not_vs singletonI)
+
+    have "?ns' \<noteq> {}"
+    proof (rule ccontr, simp only: not_not)
+      assume "?ns' = {}"
+
+      then have step_eq: "step (linorder_from_keys L Y) (G \<setminus> {i}) ?ranking_pre' j = ?ranking_pre'"
+        by (simp add: step_def)
+
+      from j_unmatched_pre' \<pi>_decomp perm \<open>j \<in> R\<close> have "j \<notin> Vs ?M'"
+        by (simp only: \<pi>_decomp ranking_append ranking_Cons step_eq,
+            intro unmatched_R_in_ranking_if[where M = ?ranking_pre'])
+           (auto dest: remove_vertices_subgraph' permutations_of_setD)
+
+      with True show False
+        by blast
+    qed
+
+    from linorder perm \<pi>_decomp \<open>i \<in> L\<close> have "L - {i} - Vs ?ranking_pre' \<subseteq> L - Vs ?ranking_pre"
+      by (intro monotonicity_order_ranking)
+         (auto dest: permutations_of_setD intro!: linorder_on_neighborsI)
+      
+    with \<open>?ns \<subseteq> L\<close> \<open>?ns' \<subseteq> L - {i}\<close> have "?ns' \<subseteq> ?ns"
+      by (auto dest: remove_vertices_subgraph')
+
+    with \<open>?ns' \<noteq> {}\<close> obtain i' where "i' \<in> ?ns"
+      by blast
+
+    then have "{i',j} \<in> G" "i' \<notin> Vs ?ranking_pre"
+      by auto
+
+    with j_unmatched_pre have "j \<in> Vs (step (linorder_from_keys L Y) G ?ranking_pre j)"
+      by (intro step_matches_if_possible[OF j_unmatched_pre \<open>{i',j} \<in> G\<close>])
+         auto
+
+    with \<pi>_decomp show "j \<in> Vs ?M"
+      by (auto simp: ranking_append ranking_Cons intro: ranking_mono_vs)
+  qed
+
+  from perm bipartite_graph have bipartite_M: "bipartite ?M L R" and bipartite_M': "bipartite ?M' L R"
+    by (auto intro!: bipartite_ranking dest: permutations_of_setD bipartite_disjointD remove_vertices_subgraph')
+
+  with j_matched True obtain i' i'' where edges: "{i',j} \<in> ?M" "{i'',j} \<in> ?M'"
+    by (meson finite_L finite_R finite_parts_bipartite_graph_abs graph_abs_vertex_edgeE')
+
+  with bipartite_M bipartite_M' \<open>j \<in> R\<close> have i_left: "i' \<in> L" "i'' \<in> L"
+    by (auto dest: bipartite_edgeD)
+
+  from perm have "matching ?M" and "matching ?M'"
+    by (auto intro!: matching_ranking dest: permutations_of_setD remove_vertices_subgraph')
+
+  with \<open>{i',j} \<in> ?M\<close> \<open>{i'',j} \<in> ?M'\<close> have the_i': "(THE i. {i,j} \<in> ?M) = i'" and the_i'': "(THE i'. {i',j} \<in> ?M') = i''"
+    by (auto intro: the_match)
+
+  from linorder perm edges \<open>{i,j} \<in> G\<close> \<open>i \<in> L\<close> \<open>j \<in> R\<close> have "(i',i'') \<in> linorder_from_keys L Y"
+    by (intro monotonicity_order_matched_matched) (auto dest: permutations_of_setD)
+
+  then have "Y i' \<le> Y i''"
+    unfolding linorder_from_keys_def
+    by simp
+  
+  with True j_matched index_j i_left g_mono \<open>{i,j} \<in> G\<close> \<open>Y \<in> L \<rightarrow> {0..1}\<close> show ?thesis
+    unfolding y\<^sub>c_def dual_sol_def
+    by (auto simp: the_i' the_i'' dest!: edges_are_Vs intro!: mono_onD[where f = g])
+next
+  case False
+  note j_unmatched' = this
+
+  from \<open>{i,j} \<in> G\<close> \<open>j \<in> R\<close> have index_j: "?j < n" "\<not> ?j < card L"
+    by (auto intro: Vs_enum_less_n dest: edges_are_Vs, simp add: Vs_enum_R)
+  show ?thesis
+  proof (cases "j \<in> Vs ?M")
+    case True
+
+    with linorder perm bipartite_graph \<open>j \<in> R\<close> have "(THE l. {l, j} \<in> ranking (linorder_from_keys L Y) G \<pi>) \<in> L"
+      by (intro the_ranking_match_left)
+         (auto dest: permutations_of_setD bipartite_disjointD)
+
+    with True j_unmatched' index_j F_gt_0 \<open>{i,j} \<in> G\<close> \<open>Y \<in> L \<rightarrow> {0..1}\<close>show ?thesis
+      unfolding y\<^sub>c_def dual_sol_def
+      by (auto simp: g_One dest!: edges_are_Vs intro: divide_nonneg_pos intro!: g_less_eq_OneI)
+  next
+    case False
+    
+    with j_unmatched' index_j F_gt_0 \<open>{i,j} \<in> G\<close>show ?thesis
+      unfolding y\<^sub>c_def dual_sol_def
+      by (auto simp: g_One dest: edges_are_Vs intro: divide_nonneg_pos)
+  qed
+qed
+
+lemma ranking_measurable':
+  assumes "H \<subseteq> G"
   assumes "set js \<subseteq> R"
-  shows "(\<lambda>Y. ranking (linorder_from_keys L Y) G js) \<in> Y_measure \<rightarrow>\<^sub>M count_space {M. M \<subseteq> G}"
+  shows "(\<lambda>Y. ranking (linorder_from_keys L Y) H js) \<in> Y_measure \<rightarrow>\<^sub>M count_space {M. M \<subseteq> G}"
 proof (rule measurable_compose[of "linorder_from_keys L" _ "count_space (preorders_on L)"], goal_cases)
   case 1
   from finite_L show ?case
@@ -248,10 +432,12 @@ proof (rule measurable_compose[of "linorder_from_keys L" _ "count_space (preorde
     by measurable
 next
   case 2
-  from finite_subsets \<open>set js \<subseteq> R\<close> show ?case
+  from finite_subsets \<open>set js \<subseteq> R\<close> \<open>H \<subseteq> G\<close> show ?case
     by (subst measurable_count_space_eq2)
        (auto dest: ranking_subgraph' preorders_onD)
 qed
+
+lemmas ranking_measurable = ranking_measurable'[OF subset_refl]
 
 lemma in_vertices_borel_measurable_count_space:
   "(\<lambda>M. i \<in> Vs M) \<in> borel_measurable (count_space {M. M \<subseteq> G})"
@@ -261,16 +447,8 @@ lemma in_vertices_Measurable_pred_count_space:
   "Measurable.pred (count_space {M. M \<subseteq> G}) (\<lambda>M. i \<in> Vs M)"
   by measurable
 
-lemmas in_vertices_borel_measurable[measurable] = measurable_compose[OF ranking_measurable in_vertices_borel_measurable_count_space]
-lemmas in_vertices_Measurable_pred[measurable] = measurable_compose[OF ranking_measurable in_vertices_Measurable_pred_count_space]
-
-lemma 
-  assumes "A \<in> sets borel"
-  assumes "finite I" "i \<in> I"
-  shows "Measurable.pred (Pi\<^sub>M I (\<lambda>_. lborel)) (\<lambda>Y. Y i \<in> A)"
-  using assms
-  by measurable
-
+lemmas in_vertices_borel_measurable[measurable] = measurable_compose[OF ranking_measurable' in_vertices_borel_measurable_count_space]
+lemmas in_vertices_Measurable_pred[measurable] = measurable_compose[OF ranking_measurable' in_vertices_Measurable_pred_count_space]
 
 lemma online_matched_with_borel_iff:
   fixes Y :: "'a \<Rightarrow> real"
@@ -297,7 +475,7 @@ proof
   from \<pi>_decomp \<open>j \<in> R\<close> bipartite_graph perm have "j \<notin> Vs M'"
     unfolding M'_def r_def
     by (intro unmatched_R_in_ranking_if)
-       (auto dest: bipartite_disjointD permutations_of_setD)
+       (auto dest: permutations_of_setD)
 
   have neighbor_ex: "\<exists>i\<in>{i. {i,j} \<in> G}. i \<notin> Vs M'" (is "?Ex")
   proof (rule ccontr)
@@ -523,22 +701,6 @@ lemma measurable_dual_component_split_dim:
   shows "(\<lambda>(y,Y). dual_sol (Y(i := y)) (ranking (linorder_from_keys L (Y(i := y))) G \<pi>) $ j) \<in> borel_measurable (U \<Otimes>\<^sub>M (\<Pi>\<^sub>M i \<in> L - {i}. U))"
   using measurable_compose[OF measurable_add_dim' measurable_dual_component[unfolded Y_measure_def]] assms
   by (auto simp: case_prod_beta)
-
-lemma g_nonnegI: "0 \<le> x \<Longrightarrow> x \<le> 1 \<Longrightarrow> 0 \<le> g x"
-  using g_from_to
-  by auto
-
-lemma g_less_eq_OneI: "0 \<le> x \<Longrightarrow> x \<le> 1 \<Longrightarrow> g x \<le> 1"
-  using g_from_to
-  by auto
-
-lemma div_F_nonneg[simp]: "0 \<le> x / F \<longleftrightarrow> 0 \<le> x"
-  using F_gt_0
-  by (simp add: zero_le_divide_iff)
-
-lemma div_F_less_eq_cancel[simp]: "x / F \<le> y / F \<longleftrightarrow> x \<le> y"
-  using F_gt_0
-  by (simp add: divide_le_cancel)
 
 lemma dual_sol_from_to:
   assumes Y_nonneg: "\<And>i. i \<in> L \<Longrightarrow> 0 \<le> Y i"
