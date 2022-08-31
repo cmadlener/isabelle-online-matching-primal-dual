@@ -73,6 +73,14 @@ lemma preorders_onI[intro]: "preorder_on S r \<Longrightarrow> r \<in> preorders
   unfolding preorders_on_def
   by blast
 
+lemma total_preorders_onD: "r \<in> total_preorders_on S \<Longrightarrow> total_preorder_on S r"
+  unfolding total_preorders_on_def
+  by blast
+
+lemma total_preorders_onI[intro]: "total_preorder_on S r \<Longrightarrow> r \<in> total_preorders_on S"
+  unfolding total_preorders_on_def
+  by blast
+
 lemma preorder_on_subset_Times: "preorder_on S r \<Longrightarrow> r \<subseteq> S \<times> S"
   unfolding preorder_on_def
   by (auto dest: refl_onD1 refl_onD2)
@@ -85,6 +93,12 @@ lemma finite_preorders_on[intro]:
   shows "finite (preorders_on S)"
   using assms
   by (auto intro: finite_subset[OF preorders_on_subset_Pow])
+
+lemma finite_total_preorders_on[intro]:
+  assumes "finite S"
+  shows "finite (total_preorders_on S)"
+  using assms
+  by (auto intro!: finite_subset[OF _ finite_preorders_on] dest!: total_preorders_onD simp: total_preorder_on_def)
 
 lemma refl_on_imp_refl_on': "refl_on S r \<Longrightarrow> refl_on' S r"
   unfolding refl_on_def refl_on'_def

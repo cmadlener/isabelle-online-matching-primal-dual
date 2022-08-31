@@ -16,11 +16,11 @@ lemma borel_measurable_restrict_space_empty[simp,intro]:
   shows "f \<in> borel_measurable (restrict_space M {})"
   by (auto intro: borel_measurable_integrable simp: integrable_restrict_space)
 
-lemma preorder_on_linorder_from_keys[intro]: "preorder_on A (linorder_from_keys A f)"
-  unfolding linorder_from_keys_def preorder_on_def
-  by (auto simp: refl_on_def trans_def)
+lemma total_preorder_on_linorder_from_keys[intro]: "total_preorder_on A (linorder_from_keys A f)"
+  unfolding linorder_from_keys_def total_preorder_on_def preorder_on_def
+  by (auto simp: refl_on_def trans_def total_on_def) 
 
-lemma linorder_from_keys_in_preorders_on[intro]: "linorder_from_keys A f \<in> preorders_on A"
+lemma linorder_from_keys_in_total_preorders_on[intro]: "linorder_from_keys A f \<in> total_preorders_on A"
   by auto
 
 lemma linorder_from_keys_lessI:
@@ -31,21 +31,32 @@ lemma linorder_from_keys_lessI:
   unfolding linorder_from_keys_def
   by auto
 
+lemma linorder_from_keys_Restr:
+  shows "Restr (linorder_from_keys A f) (A - B) = linorder_from_keys (A - B) f"
+  unfolding linorder_from_keys_def
+  by blast
+
+lemma linorder_from_keys_update_eq:
+  shows "linorder_from_keys (A - {a}) (f(a:=x)) = linorder_from_keys (A - {a}) f"
+  unfolding linorder_from_keys_def
+  by auto
+
+find_theorems almost_everywhere measurable
 text \<open>Generalize @{thm measurable_linorder_from_keys_restrict} by Eberl from
- \<^term>\<open>count_space (Pow (A \<times> A))\<close> to \<^term>\<open>count_space (preorders_on A)\<close>. The original
+ \<^term>\<open>count_space (Pow (A \<times> A))\<close> to \<^term>\<open>count_space (total_preorders_on A)\<close>. The original
   statement then also follows with @{thm measurable_count_space_extend}.}\<close>
 lemma measurable_linorder_from_keys_restrict_preorders[measurable]:
   assumes fin: "finite A"
-  shows "linorder_from_keys A \<in> Pi\<^sub>M A (\<lambda>_. borel :: real measure) \<rightarrow>\<^sub>M count_space (preorders_on A)"
+  shows "linorder_from_keys A \<in> Pi\<^sub>M A (\<lambda>_. borel :: real measure) \<rightarrow>\<^sub>M count_space (total_preorders_on A)"
   (is "_ : ?M \<rightarrow>\<^sub>M _")
   apply (subst measurable_count_space_eq2)
    apply (auto simp: fin)
 proof -
   note fin[simp]
-  fix r assume "r \<in> preorders_on A"
+  fix r assume "r \<in> total_preorders_on A"
   then have "linorder_from_keys A -` {r} \<inter> space ?M =
     {f \<in> space ?M. \<forall>x\<in>A. \<forall>y\<in>A. (x,y) \<in> r \<longleftrightarrow> f x \<le> f y}"
-    by (auto simp: linorder_from_keys_def preorder_on_def set_eq_iff dest!: preorders_onD refl_on_domain)
+    by (auto simp: linorder_from_keys_def total_preorder_on_def preorder_on_def set_eq_iff dest!: total_preorders_onD refl_on_domain)
 
   also have "\<dots> \<in> sets ?M"
     by measurable
@@ -103,7 +114,7 @@ lemma AE_PiM_uniform_measure_PiE_countable:
 
 
 locale wf_ranking_order_prob = wf_ranking_order +
-  fixes \<pi> :: "'a list" and Y_measure U
+  fixes \<pi> :: "('a::linorder) list" and Y_measure U
   fixes g :: "real \<Rightarrow> real" and F :: real
 
   defines "U \<equiv> uniform_measure lborel {0..1::real}"
@@ -118,7 +129,6 @@ locale wf_ranking_order_prob = wf_ranking_order +
 
   assumes F_gt_0: "0 < F"
 begin
-
 
 sublocale U_prob_space: prob_space U
   unfolding U_def
@@ -261,14 +271,18 @@ lemma div_F_less_eq_cancel[simp]: "x / F \<le> y / F \<longleftrightarrow> x \<l
 lemma preorder_on_neighbors_linorder_from_keys[intro]:
   assumes "H \<subseteq> G"
   assumes "j \<in> R"
-  shows "preorder_on' {i. {i,j} \<in> H} (linorder_from_keys L Y)"
+  shows "total_preorder_on' {i. {i,j} \<in> H} (linorder_from_keys L Y)"
   using assms perm
+  by (auto dest: permutations_of_setD)
+
+lemma set_\<pi>[simp]: "set \<pi> = R"
+  using perm
   by (auto dest: permutations_of_setD)
 
 
 \<comment> \<open>Lemma 2 from DJK\<close>
 lemma dominance:
-  assumes "linorder_on L (linorder_from_keys L Y)"
+  assumes "total_preorder_on L (linorder_from_keys L Y)"
   assumes "i \<in> L" "j \<in> R"
   assumes "{i,j} \<in> G"
 
@@ -278,12 +292,12 @@ proof (intro dominance_order[where j = j], goal_cases)
   case 6
   with perm \<open>Y i < y\<^sub>c Y \<pi> i j\<close> \<open>i \<in> L\<close> \<open>j \<in> R\<close> show ?case
     by (intro linorder_from_keys_lessI the_ranking_match_left ballI preorder_on_neighborsI)
-       (auto simp: y\<^sub>c_def dest: remove_vertices_subgraph' permutations_of_setD)
-qed (use assms perm in \<open>(blast dest: permutations_of_setD)+\<close>)
+       (auto simp: y\<^sub>c_def dest: remove_vertices_subgraph')
+qed (use assms in auto)
 
 \<comment> \<open>Lemma 3 from DJK\<close>
 lemma monotonicity:
-  assumes linorder: "linorder_on L (linorder_from_keys L Y)"
+  assumes preorder: "total_preorder_on L (linorder_from_keys L Y)"
   assumes "Y \<in> L \<rightarrow> {0..1}"
   assumes "i \<in> L" "j \<in> R"
   assumes "{i,j} \<in> G"
@@ -305,12 +319,12 @@ proof (cases "j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \
     let ?ranking_pre = "ranking (linorder_from_keys L Y) G pre"
     let ?ranking_pre' = "ranking (linorder_from_keys L Y) (G \<setminus> {i}) pre"
 
-    from \<pi>_decomp perm \<open>j \<in> R\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
-      by (intro unmatched_R_in_ranking_if)
-         (auto dest: permutations_of_setD)
+    from \<pi>_decomp perm preorder \<open>j \<in> R\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
+      by (intro unmatched_R_in_ranking_if ballI preorder_on_neighborsI)
+         (auto dest: permutations_of_setD linorder_on_imp_preorder_on)
 
     from \<pi>_decomp perm \<open>j \<in> R\<close> have j_unmatched_pre': "j \<notin> Vs ?ranking_pre'"
-      by (intro unmatched_R_in_ranking_if)
+      by (intro unmatched_R_in_ranking_if ballI preorder_on_neighborsI)
          (auto dest: permutations_of_setD remove_vertices_subgraph')
 
     let ?ns = "{i. i \<notin> Vs ?ranking_pre \<and> {i,j} \<in> G}"
@@ -320,9 +334,7 @@ proof (cases "j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \
       by (intro unmatched_neighbors_L subset_refl)
 
     from \<open>j \<in> R\<close> have "?ns' \<subseteq> L - {i}"
-      apply (auto )
-       apply (metis equalityD2 mem_Collect_eq neighbors_right_subset_left remove_vertices_subgraph' subsetD)
-      by (meson edges_are_Vs(1) remove_vertices_not_vs singletonI)
+      by (auto dest: neighbors_right_subset_left[OF remove_vertices_subgraph] edges_are_Vs intro: remove_vertices_not_vs')
 
     have "?ns' \<noteq> {}"
     proof (rule ccontr, simp only: not_not)
@@ -333,16 +345,16 @@ proof (cases "j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \
 
       from j_unmatched_pre' \<pi>_decomp perm \<open>j \<in> R\<close> have "j \<notin> Vs ?M'"
         by (simp only: \<pi>_decomp ranking_append ranking_Cons step_eq,
-            intro unmatched_R_in_ranking_if[where M = ?ranking_pre'])
+            intro unmatched_R_in_ranking_if[where M = ?ranking_pre'] ballI preorder_on_neighborsI)
            (auto dest: remove_vertices_subgraph' permutations_of_setD)
 
       with True show False
         by blast
     qed
 
-    from linorder perm \<pi>_decomp \<open>i \<in> L\<close> have "L - {i} - Vs ?ranking_pre' \<subseteq> L - Vs ?ranking_pre"
-      by (intro monotonicity_order_ranking)
-         (auto dest: permutations_of_setD intro!: linorder_on_neighborsI)
+    from preorder perm \<pi>_decomp \<open>i \<in> L\<close> have "L - {i} - Vs ?ranking_pre' \<subseteq> L - Vs ?ranking_pre"
+      by (intro monotonicity_order_ranking ballI preorder_on_neighborsI)
+         (auto dest: permutations_of_setD)
       
     with \<open>?ns \<subseteq> L\<close> \<open>?ns' \<subseteq> L - {i}\<close> have "?ns' \<subseteq> ?ns"
       by (auto dest: remove_vertices_subgraph')
@@ -361,8 +373,8 @@ proof (cases "j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \
       by (auto simp: ranking_append ranking_Cons intro: ranking_mono_vs)
   qed
 
-  from perm have bipartite_M: "bipartite ?M L R" and bipartite_M': "bipartite ?M' L R"
-    by (auto intro!: bipartite_ranking dest: permutations_of_setD remove_vertices_subgraph')
+  have bipartite_M: "bipartite ?M L R" and bipartite_M': "bipartite ?M' L R"
+    by (auto intro!: bipartite_ranking dest: remove_vertices_subgraph')
 
   with j_matched True obtain i' i'' where edges: "{i',j} \<in> ?M" "{i'',j} \<in> ?M'"
     by (meson finite_L finite_R finite_parts_bipartite_graph_abs graph_abs_vertex_edgeE')
@@ -370,13 +382,13 @@ proof (cases "j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \
   with bipartite_M bipartite_M' \<open>j \<in> R\<close> have i_left: "i' \<in> L" "i'' \<in> L"
     by (auto dest: bipartite_edgeD)
 
-  from perm have "matching ?M" and "matching ?M'"
-    by (auto intro!: matching_ranking dest: permutations_of_setD remove_vertices_subgraph')
+  have "matching ?M" and "matching ?M'"
+    by (auto intro!: matching_ranking dest: remove_vertices_subgraph')
 
   with \<open>{i',j} \<in> ?M\<close> \<open>{i'',j} \<in> ?M'\<close> have the_i': "(THE i. {i,j} \<in> ?M) = i'" and the_i'': "(THE i'. {i',j} \<in> ?M') = i''"
     by (auto intro: the_match)
 
-  from linorder perm edges \<open>{i,j} \<in> G\<close> \<open>i \<in> L\<close> \<open>j \<in> R\<close> have "(i',i'') \<in> linorder_from_keys L Y"
+  from preorder perm edges \<open>{i,j} \<in> G\<close> \<open>i \<in> L\<close> \<open>j \<in> R\<close> have "(i',i'') \<in> linorder_from_keys L Y"
     by (intro monotonicity_order_matched_matched) (auto dest: permutations_of_setD)
 
   then have "Y i' \<le> Y i''"
@@ -396,9 +408,8 @@ next
   proof (cases "j \<in> Vs ?M")
     case True
 
-    with linorder perm \<open>j \<in> R\<close> have "(THE l. {l, j} \<in> ranking (linorder_from_keys L Y) G \<pi>) \<in> L"
-      by (intro the_ranking_match_left)
-         (auto dest: permutations_of_setD)
+    with preorder \<open>j \<in> R\<close> have "(THE l. {l, j} \<in> ranking (linorder_from_keys L Y) G \<pi>) \<in> L"
+      by (intro the_ranking_match_left) auto
 
     with True j_unmatched' index_j F_gt_0 \<open>{i,j} \<in> G\<close> \<open>Y \<in> L \<rightarrow> {0..1}\<close>show ?thesis
       unfolding y\<^sub>c_def dual_sol_def
@@ -416,7 +427,7 @@ lemma ranking_measurable':
   assumes "H \<subseteq> G"
   assumes "set js \<subseteq> R"
   shows "(\<lambda>Y. ranking (linorder_from_keys L Y) H js) \<in> Y_measure \<rightarrow>\<^sub>M count_space {M. M \<subseteq> G}"
-proof (rule measurable_compose[of "linorder_from_keys L" _ "count_space (preorders_on L)"], goal_cases)
+proof (rule measurable_compose[of "linorder_from_keys L" _ "count_space (total_preorders_on L)"], goal_cases)
   case 1
   from finite_L show ?case
     unfolding Y_measure_def U_def
@@ -425,7 +436,9 @@ next
   case 2
   from finite_subsets \<open>set js \<subseteq> R\<close> \<open>H \<subseteq> G\<close> show ?case
     by (subst measurable_count_space_eq2)
-       (auto dest: ranking_subgraph' preorders_onD)
+       (auto dest: ranking_subgraph' total_preorders_onD)
+qed
+
 qed
 
 lemmas ranking_measurable = ranking_measurable'[OF subset_refl]
@@ -519,7 +532,7 @@ proof
       assume "Y i' < Y ?i"
       with 3 i_unmatched \<open>j \<in> R\<close> have "(i',?i) \<in> r \<and> (?i,i') \<notin> r"
         unfolding r_def linorder_from_keys_def
-        by (auto dest: neighbors_right_subset_left[OF subset_refl])
+        by (auto dest: neighbors_right_subset_left_remove_vertices)
 
       with 3 i_min show False
         by blast
@@ -527,60 +540,60 @@ proof
   qed (use i_unmatched j_matched in \<open>simp_all add: the_i\<close>)
 next
   assume eligible_neighbor: ?F
-  let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
+  let ?ns = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G \<setminus> X}"
 
   from eligible_neighbor obtain i where 
-    i_eligible: "i \<notin> Vs M'" "{i,j} \<in> G" and
+    i_eligible: "i \<notin> Vs M'" "{i,j} \<in> G \<setminus> X" and
     Y_i: "Y i \<in> A" and
     i_min_on_r: "\<forall>i'\<in>?ns. Y i \<le> Y i'"
     by auto
 
-  from \<pi>_decomp have "?M = ranking' r G M' (j#\<pi>'')"
+  from \<pi>_decomp have "?M = ranking' r (G \<setminus> X) M' (j#\<pi>'')"
     unfolding ranking'_def M'_def
     by simp
 
   from \<pi>_decomp \<open>j \<in> R\<close> perm have j_unmatched_before: "j \<notin> Vs M'"
     unfolding M'_def r_def
-    by (intro unmatched_R_in_ranking_if)
-       (auto dest: permutations_of_setD)
+    by (intro unmatched_R_in_ranking_if ballI preorder_on_neighborsI_remove_vertices)
+       (auto dest: permutations_of_setD remove_vertices_subgraph')
 
-  let ?min = "min_on_rel ?ns r"
+  let ?min = "determ_min_on_rel ?ns r"
 
-  from j_unmatched_before i_eligible have step_eq: "step r G M' j = insert {?min, j} M'"
+  from j_unmatched_before i_eligible have step_eq: "step r (G \<setminus> X) M' j = insert {?min, j} M'"
     unfolding step_def
     by auto
 
-  with finite_vs perm \<pi>_decomp \<open>j \<in> R\<close> have the_i_step: "(THE i. {i,j} \<in> step r G M' j) = ?min"
+  with finite_vs perm \<pi>_decomp \<open>j \<in> R\<close> have the_i_step: "(THE i. {i,j} \<in> step r (G \<setminus> X) M' j) = ?min"
     unfolding M'_def
-    by (intro the_match matching_step matching_ranking)
-       (auto intro!: preorder_on_neighbors_linorder_from_keys simp: r_def dest: permutations_of_setD)
+    by (intro the_match matching_step matching_ranking ballI preorder_on_neighborsI_remove_vertices)
+       (auto simp: r_def dest: permutations_of_setD)
 
-  from \<open>j \<in> R\<close> bipartite_graph i_eligible have min_unmatched: "?min \<in> {i. i \<notin> Vs M' \<and> {i,j} \<in> G}"
+  from \<open>j \<in> R\<close> bipartite_graph i_eligible have min_unmatched: "?min \<in> {i. i \<notin> Vs M' \<and> {i,j} \<in> G \<setminus> X}"
     unfolding r_def
-    by (intro min_if_finite preorder_on'_subset[where S = L and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"] preorder_on_imp_preorder_on' finite_unmatched_neighbors)
-       (auto dest: bipartite_edgeD)
+    by (intro min_if_finite total_preorder_on'_subset[where S = "L - X" and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G \<setminus> X}"] total_preorder_on_imp_total_preorder_on' finite_unmatched_neighbors)
+       (auto dest: bipartite_edgeD neighbors_right_subset_left_remove_vertices remove_vertices_subgraph')
 
-  from \<open>j \<in> R\<close> bipartite_graph i_eligible have min_is_min: "\<not>(\<exists>x \<in> ?ns. (x, ?min) \<in> r \<and> (?min, x) \<notin> r)"
+  from \<open>j \<in> R\<close> bipartite_graph i_eligible have min_is_min: "\<forall>x \<in> ?ns. (?min, x) \<in> r"
     unfolding r_def
-    by (intro min_if_finite preorder_on'_subset[where S = L and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G}"] preorder_on_imp_preorder_on' finite_unmatched_neighbors)
-       (auto dest: bipartite_edgeD)
+    by (intro ballI min_on_rel_least total_preorder_on'_subset[where S = "L - X" and T = "{i. i \<notin> Vs M' \<and> {i,j} \<in> G \<setminus> X}"] total_preorder_on_imp_total_preorder_on' finite_unmatched_neighbors)
+       (auto dest: bipartite_edgeD neighbors_right_subset_left_remove_vertices remove_vertices_subgraph')
 
-  have Y_min: "Y (min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G} r) = Y i"
+  have Y_min: "Y (determ_min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G \<setminus> X} r) = Y i"
   proof (rule ccontr)
-    assume "Y (min_on_rel {i. i \<notin> Vs M' \<and> {i, j} \<in> G} r) \<noteq> Y i"
-    then consider "Y (min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G} r) < Y i" | "Y i < Y (min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G} r)"
+    assume "Y (determ_min_on_rel {i. i \<notin> Vs M' \<and> {i, j} \<in> G \<setminus> X} r) \<noteq> Y i"
+    then consider "Y (determ_min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G \<setminus> X} r) < Y i" | "Y i < Y (determ_min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G \<setminus> X} r)"
       by linarith
 
     then show False
     proof cases
-      case 1     
+      case 1
       with min_unmatched i_min_on_r show ?thesis
         by auto
     next
       case 2
-      with \<open>{i,j} \<in> G\<close> \<open>j \<in> R\<close> bipartite_graph min_unmatched have "(i, ?min) \<in> r" "(?min, i) \<notin> r"
+      with \<open>{i,j} \<in> G \<setminus> X\<close> \<open>j \<in> R\<close> bipartite_graph min_unmatched have "(i, ?min) \<in> r" "(?min, i) \<notin> r"
         unfolding r_def linorder_from_keys_def
-        by (auto dest: bipartite_edgeD)
+        by (auto dest: bipartite_edgeD remove_vertices_subgraph' neighbors_right_subset_left_remove_vertices)
 
       with min_is_min i_eligible show ?thesis
         by blast
@@ -595,10 +608,10 @@ next
       by (auto simp: ranking_append ranking_Cons vs_insert intro: ranking_mono_vs)
   next
     case 2
-    from finite_vs perm \<pi>_decomp step_eq \<open>j \<in> R\<close> have "(THE i. {i,j} \<in> ranking r G \<pi>) = ?min"
+    from finite_vs perm \<pi>_decomp step_eq \<open>j \<in> R\<close> have "(THE i. {i,j} \<in> ranking r (G \<setminus> X) \<pi>) = ?min"
     unfolding M'_def
-    by (intro the_match matching_step matching_ranking)
-       (auto intro!: preorder_on_neighbors_linorder_from_keys intro: ranking_mono dest: permutations_of_setD simp: r_def ranking_append ranking_Cons)
+    by (intro the_match matching_step matching_ranking ballI preorder_on_neighborsI_remove_vertices)
+       (auto intro: ranking_mono dest: permutations_of_setD simp: r_def ranking_append ranking_Cons)
 
   with Y_min Y_i show ?case
     by simp
