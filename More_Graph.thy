@@ -524,7 +524,7 @@ text \<open>
 definition remove_vertices_graph :: "'a graph \<Rightarrow> 'a set \<Rightarrow> 'a graph" (infixl "\<setminus>" 60) where
   "G \<setminus> X \<equiv> {e \<in> G. e \<inter> X = {}}"
 
-lemma remove_vertices_empty[simp]:
+lemma remove_vertices_empty:
   "G \<setminus> {} = G"
   unfolding remove_vertices_graph_def by simp
 
