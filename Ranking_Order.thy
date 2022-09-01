@@ -622,6 +622,16 @@ lemma ranking_subgraph':
   using assms
   by (auto dest: ranking_subgraph)
 
+lemma ranking_match_neighbor_L:
+  assumes "H \<subseteq> G"
+  assumes "total_preorder_on L r"
+  assumes "set js \<subseteq> R"
+  assumes "j \<in> R"
+  assumes "{i,j} \<in> ranking r H js"
+  shows "i \<in> L"
+  using assms bipartite_graph
+  by (auto dest: ranking_subgraph' bipartite_edgeD)
+
 lemma the_ranking_match_left:
   assumes "H \<subseteq> G"
   assumes "\<forall>j\<in>set js. total_preorder_on' {i. {i,j} \<in> H} r"
@@ -1287,6 +1297,40 @@ proof -
   with \<open>i' = ?min\<close> \<open>i'' = ?min'\<close> show "(i',i'') \<in> r"
     by simp
 qed
+
+lemma min_on_rel_Restr:
+  assumes "total_preorder_on' S r"
+  assumes "finite S"  "S \<noteq> {}"
+  assumes "S \<subseteq> T"
+  shows "determ_min_on_rel S (Restr r T) = determ_min_on_rel S r"
+  using assms
+  by (intro min_on_rel_eq)
+     (auto dest: min_if_finite)
+
+lemma step_Restr_to_vertices:
+  assumes "j \<in> R"
+  assumes preorder: "total_preorder_on' L r"
+  shows "step (Restr r (L - X)) (G \<setminus> X) M j = step r (G \<setminus> X) M j"
+proof (cases M j "G \<setminus> X" rule: step_cases')
+  case new_match
+  let ?ns = "{i. i \<notin> Vs M \<and> {i, j} \<in> G \<setminus> X}"
+  from bipartite_graph \<open>j \<in> R\<close> have "?ns \<subseteq> L - X"
+    by (auto dest: remove_vertices_subgraph' bipartite_edgeD edges_are_Vs intro: remove_vertices_not_vs')
+
+  with new_match preorder have "determ_min_on_rel ?ns (Restr r (L - X)) = determ_min_on_rel ?ns r"
+    by (intro min_on_rel_Restr)
+       (auto intro: total_preorder_on'_subset)
+
+  with new_match show ?thesis
+    by (simp add: step_def)
+qed (simp_all add: step_def)
+
+lemma ranking_Restr_to_vertices:
+  assumes "set js \<subseteq> R"
+  assumes "total_preorder_on' L r"
+  shows "ranking' (Restr r (L - X)) (G \<setminus> X) M js = ranking' r (G \<setminus> X) M js"
+  using assms
+  by (induction js arbitrary: M) (simp_all add: ranking_Cons step_Restr_to_vertices)
 
 end
 end
