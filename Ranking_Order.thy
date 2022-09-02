@@ -45,6 +45,10 @@ lemma refl_on'D: "refl_on' S r \<Longrightarrow> a \<in> S \<Longrightarrow> (a,
   unfolding refl_on'_def
   by blast
 
+lemma refl_on'_Restr: "refl_on' S r \<Longrightarrow> refl_on' S (Restr r S)"
+  unfolding refl_on'_def
+  by blast
+
 lemma linorder_on'_refl_on'D: "linorder_on' S r \<Longrightarrow> refl_on' S r"
   unfolding linorder_on'_def
   by blast
@@ -65,14 +69,6 @@ lemma preorders_onI[intro]: "preorder_on S r \<Longrightarrow> r \<in> preorders
   unfolding preorders_on_def
   by blast
 
-lemma total_preorders_onD: "r \<in> total_preorders_on S \<Longrightarrow> total_preorder_on S r"
-  unfolding total_preorders_on_def
-  by blast
-
-lemma total_preorders_onI[intro]: "total_preorder_on S r \<Longrightarrow> r \<in> total_preorders_on S"
-  unfolding total_preorders_on_def
-  by blast
-
 lemma preorder_on_subset_Times: "preorder_on S r \<Longrightarrow> r \<subseteq> S \<times> S"
   unfolding preorder_on_def
   by (auto dest: refl_onD1 refl_onD2)
@@ -85,12 +81,6 @@ lemma finite_preorders_on[intro]:
   shows "finite (preorders_on S)"
   using assms
   by (auto intro: finite_subset[OF preorders_on_subset_Pow])
-
-lemma finite_total_preorders_on[intro]:
-  assumes "finite S"
-  shows "finite (total_preorders_on S)"
-  using assms
-  by (auto intro!: finite_subset[OF _ finite_preorders_on] dest!: total_preorders_onD simp: total_preorder_on_def)
 
 lemma refl_on_imp_refl_on': "refl_on S r \<Longrightarrow> refl_on' S r"
   unfolding refl_on_def refl_on'_def
@@ -126,6 +116,16 @@ lemma preorder_on'_subset:
   "preorder_on' S r \<Longrightarrow> T \<subseteq> S \<Longrightarrow> preorder_on' T r"
   unfolding preorder_on'_def
   by (auto intro: refl_on'_subset total_on_subset)
+
+lemma total_on_Restr:
+  "total_on S r \<Longrightarrow> total_on S (Restr r S)"
+  unfolding total_on_def
+  by blast
+
+lemma linorder_on'_Restr:
+  "linorder_on' S r \<Longrightarrow> linorder_on' S (Restr r S)"
+  unfolding linorder_on'_def
+  by (auto intro: refl_on'_Restr antisym_subset trans_Restr total_on_Restr)
   
 definition is_min_rel :: "('a \<Rightarrow> bool) \<Rightarrow> 'a rel \<Rightarrow> 'a \<Rightarrow> bool" where
   "is_min_rel P r x = (P x \<and> \<not>(\<exists>y. P y \<and> (y,x) \<in> r \<and> (x,y) \<notin> r))"
@@ -133,11 +133,12 @@ definition is_min_rel :: "('a \<Rightarrow> bool) \<Rightarrow> 'a rel \<Rightar
 definition min_rel :: "('a \<Rightarrow> bool) \<Rightarrow> 'a rel \<Rightarrow> 'a" where
   "min_rel P r = (SOME x. is_min_rel P r x)"
 
+\<comment> \<open>use \<^term>\<open>Restr\<close> to make minimum deterministic in some cases\<close>
 definition min_on_rel :: "'a set \<Rightarrow> 'a rel \<Rightarrow> 'a" where
-  "min_on_rel S r = min_rel (\<lambda>x. x \<in> S) r"
+  "min_on_rel S r = min_rel (\<lambda>x. x \<in> S) (Restr r S)"
 
 lemma ex_min_if_finite:
-  "\<lbrakk> finite S; S \<noteq> {}; preorder_on' S r \<rbrakk> \<Longrightarrow> \<exists>m\<in>S. \<not>(\<exists>x\<in>S. (x,m) \<in> r \<and> (m,x) \<notin> r)"
+  "\<lbrakk> finite S; S \<noteq> {}; preorder_on' S r \<rbrakk> \<Longrightarrow> \<exists>m\<in>S. \<not>(\<exists>x\<in>S. (x,m) \<in> Restr r S \<and> (m,x) \<notin> Restr r S)"
 proof (induction arbitrary: r rule: finite.induct)
   case (insertI A a)
   then show ?case
@@ -158,18 +159,24 @@ qed simp
 lemma ex_is_min_if_finite:
   assumes "preorder_on' S r"
   assumes "finite S" "S \<noteq> {}"
-  shows "\<exists>x. is_min_rel (\<lambda>x. x \<in> S) r x"
+  shows "\<exists>x. is_min_rel (\<lambda>x. x \<in> S) (Restr r S) x"
   using assms
   unfolding is_min_rel_def
   using ex_min_if_finite
   by fast
 
+lemma min_if_finite':
+  assumes "preorder_on' S r"
+  assumes "finite S" "S \<noteq> {}"
+  shows "min_on_rel S r \<in> S" and "\<not>(\<exists>x\<in>S. (x, min_on_rel S r) \<in> Restr r S \<and> (min_on_rel S r, x) \<notin> Restr r S)"
+  using assms
+  by (metis ex_is_min_if_finite is_min_rel_def min_on_rel_def min_rel_def some_eq_ex)+
+
 lemma min_if_finite:
   assumes "preorder_on' S r"
   assumes "finite S" "S \<noteq> {}"
   shows "min_on_rel S r \<in> S" and "\<not>(\<exists>x\<in>S. (x, min_on_rel S r) \<in> r \<and> (min_on_rel S r, x) \<notin> r)"
-  using assms
-  by (metis ex_is_min_if_finite is_min_rel_def min_on_rel_def min_rel_def some_eq_ex)+
+  using assms min_if_finite' by force+
 
 lemma min_rel_linorder_eq:
   assumes "linorder_on' {x. P x} r"
@@ -187,7 +194,7 @@ lemma min_on_rel_linorder_eq:
   shows "min_on_rel S r = a"
   using assms
   unfolding min_on_rel_def
-  by (auto intro: min_rel_linorder_eq)
+  by (auto intro!: min_rel_linorder_eq intro: linorder_on'_Restr)
 
 lemma min_on_rel_singleton:
   shows "min_on_rel {a} r = a"
@@ -462,6 +469,9 @@ lemma neighbors_right_subset_left: "H \<subseteq> G \<Longrightarrow> j \<in> R 
   using bipartite_graph
   by (auto dest: bipartite_edgeD)
 
+lemma neighbors_right_subset_left_remove_vertices: "j \<in> R \<Longrightarrow> {i. {i,j} \<in> G \<setminus> X} \<subseteq> L - X"
+  by (auto dest: neighbors_right_subset_left[OF remove_vertices_subgraph] edges_are_Vs intro: remove_vertices_not_vs')
+
 lemma preorder_on_neighborsI[intro]:
   assumes "H \<subseteq> G"
   assumes "preorder_on L r"
@@ -470,6 +480,13 @@ lemma preorder_on_neighborsI[intro]:
   using assms
   by (auto dest: preorder_on_imp_preorder_on' neighbors_right_subset_left intro: preorder_on'_subset)
 
+lemma preorder_on_neighborsI_remove_vertices[intro]:
+  assumes "preorder_on (L - X) r"
+  assumes "j \<in> R"
+  shows "preorder_on' {i. {i,j} \<in> G \<setminus> X} r"
+  using assms
+  by (auto dest: preorder_on_imp_preorder_on' neighbors_right_subset_left_remove_vertices intro: preorder_on'_subset)
+
 lemma linorder_on_neighborsI[intro]:
   assumes "H \<subseteq> G"
   assumes "linorder_on L r"
@@ -477,6 +494,13 @@ lemma linorder_on_neighborsI[intro]:
   shows "linorder_on' {i. {i,j} \<in> H} r"
   using assms
   by (auto dest: linorder_on_imp_linorder_on' neighbors_right_subset_left intro: linorder_on'_subset)
+
+lemma linorder_on_neighborsI_remove_vertices[intro]:
+  assumes "linorder_on (L - X) r"
+  assumes "j \<in> R"
+  shows "linorder_on' {i. {i,j} \<in> G \<setminus> X} r"
+  using assms
+  by (auto dest: linorder_on_imp_linorder_on' neighbors_right_subset_left_remove_vertices intro: linorder_on'_subset)
 
 lemma finite_neighbors:
   "H \<subseteq> G \<Longrightarrow> finite {i. {i,j} \<in> H}"
@@ -522,7 +546,7 @@ lemma unmatched_R_in_step_if:
 
 lemma unmatched_R_in_ranking_if:
   assumes "H \<subseteq> G"
-  assumes "preorder_on L r"
+  assumes "\<forall>j \<in> set js. preorder_on' {i. {i,j} \<in> H} r"
   assumes "set js \<subseteq> R"
   assumes "j \<notin> L" "j \<notin> set js"
   assumes "j \<notin> Vs M"
@@ -532,8 +556,7 @@ proof (induction js arbitrary: M)
   case (Cons j' js)
 
   then have "j \<notin> Vs (step r H M j')"
-    by (intro unmatched_R_in_step_if preorder_on_neighborsI preorders_onI)
-       auto
+    by (intro unmatched_R_in_step_if) auto
 
   with Cons show ?case
     by (simp add: ranking_Cons)
@@ -576,16 +599,6 @@ lemma ranking_subgraph':
   using assms
   by (auto dest: ranking_subgraph)
 
-lemma ranking_match_neighbor_L:
-  assumes "H \<subseteq> G"
-  assumes "total_preorder_on L r"
-  assumes "set js \<subseteq> R"
-  assumes "j \<in> R"
-  assumes "{i,j} \<in> ranking r H js"
-  shows "i \<in> L"
-  using assms bipartite_graph
-  by (auto dest: ranking_subgraph' bipartite_edgeD)
-
 lemma the_ranking_match_left:
   assumes "H \<subseteq> G"
   assumes "\<forall>j\<in>set js. preorder_on' {i. {i,j} \<in> H} r"
@@ -594,7 +607,8 @@ lemma the_ranking_match_left:
   assumes j_matched: "j \<in> Vs (ranking' r H M js)"
   assumes "j \<in> R"
   assumes "set js \<subseteq> R"
-  shows "(THE i. {i,j} \<in> ranking' r H M js) \<in> L"
+  shows "{THE i. {i,j} \<in> ranking' r H M js, j} \<in> ranking' r H M js"
+    "(THE i. {i,j} \<in> ranking' r H M js) \<in> L"
 proof -
   from j_matched obtain e where e: "e \<in> ranking' r H M js" "j \<in> e"
     by (auto elim: vs_member_elim)
@@ -612,8 +626,9 @@ proof -
     by (intro the_match matching_ranking finite_subset[OF Vs_subset finite_vs])
         auto  
 
-  with \<open>u \<in> L\<close> show ?thesis
-    by blast
+  with e uv \<open>v = j\<close> show "{THE i. {i, j} \<in> ranking' r H M js, j} \<in> ranking' r H M js"
+    "(THE i. {i, j} \<in> ranking' r H M js) \<in> L"
+    by auto
 qed
 
 lemma step_remove_unmatched_eq:
@@ -1220,36 +1235,22 @@ proof -
     by simp
 qed
 
-lemma min_on_rel_Restr:
-  assumes "total_preorder_on' S r"
-  assumes "finite S"  "S \<noteq> {}"
-  assumes "S \<subseteq> T"
-  shows "determ_min_on_rel S (Restr r T) = determ_min_on_rel S r"
-  using assms
-  by (intro min_on_rel_eq)
-     (auto dest: min_if_finite)
-
 lemma step_Restr_to_vertices:
   assumes "j \<in> R"
-  assumes preorder: "total_preorder_on' L r"
   shows "step (Restr r (L - X)) (G \<setminus> X) M j = step r (G \<setminus> X) M j"
 proof (cases M j "G \<setminus> X" rule: step_cases')
   case new_match
-  let ?ns = "{i. i \<notin> Vs M \<and> {i, j} \<in> G \<setminus> X}"
-  from bipartite_graph \<open>j \<in> R\<close> have "?ns \<subseteq> L - X"
+  from bipartite_graph \<open>j \<in> R\<close> have "{i. i \<notin> Vs M \<and> {i, j} \<in> G \<setminus> X} \<subseteq> L - X"
     by (auto dest: remove_vertices_subgraph' bipartite_edgeD edges_are_Vs intro: remove_vertices_not_vs')
 
-  with new_match preorder have "determ_min_on_rel ?ns (Restr r (L - X)) = determ_min_on_rel ?ns r"
-    by (intro min_on_rel_Restr)
-       (auto intro: total_preorder_on'_subset)
-
+  then have "Restr (Restr r (L - X)) {i. i \<notin> Vs M \<and> {i, j} \<in> G \<setminus> X} = Restr r {i. i \<notin> Vs M \<and> {i,j} \<in> G \<setminus> X}"
+    by blast
   with new_match show ?thesis
-    by (simp add: step_def)
+    by (simp add: step_def min_on_rel_def)
 qed (simp_all add: step_def)
 
 lemma ranking_Restr_to_vertices:
   assumes "set js \<subseteq> R"
-  assumes "total_preorder_on' L r"
   shows "ranking' (Restr r (L - X)) (G \<setminus> X) M js = ranking' r (G \<setminus> X) M js"
   using assms
   by (induction js arbitrary: M) (simp_all add: ranking_Cons step_Restr_to_vertices)
