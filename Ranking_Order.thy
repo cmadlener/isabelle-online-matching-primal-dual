@@ -1,6 +1,6 @@
 theory Ranking_Order
   imports
-    More_Graph
+    Bipartite_Matching_LP
     "Treaps.Random_List_Permutation"
 begin
 
@@ -433,30 +433,8 @@ lemma step_matches_if_possible:
   by (cases M j G rule: step_cases')
      (auto simp: step_def vs_insert)
 
-locale wf_ranking_order =
-  fixes L :: "'a set" and R :: "'a set"
-  fixes G :: "'a graph"
-
-  assumes finite_L: "finite L" and finite_R: "finite R"
-  assumes bipartite_graph: "bipartite G L R"
-  assumes parts_minimal: "Vs G = L \<union> R"
+context bipartite_matching_lp
 begin
-
-sublocale graph_abs G
-  using bipartite_graph finite_L finite_R
-  by (intro finite_parts_bipartite_graph_abs)
-
-lemmas finite_graph[intro,simp] = finite_E
-lemmas finite_vs[intro] = graph[THEN conjunct2]
-
-lemma parts_disjoint[intro,simp]: "L \<inter> R = {}"
-  using bipartite_graph
-  by (auto dest: bipartite_disjointD)
-
-lemma bipartite_FalseD[dest]:  "x \<in> L \<Longrightarrow> x \<in> R \<Longrightarrow> False"
-  using bipartite_graph
-  by (auto dest: bipartite_disjointD)
-
 
 lemma finite_vs_subgraph: "H \<subseteq> G \<Longrightarrow> finite (Vs H)"
   using finite_vs
