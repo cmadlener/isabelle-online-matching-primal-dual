@@ -2,6 +2,7 @@ theory Bipartite_Matching_LP
   imports
     More_Graph
     Jordan_Normal_Form.Matrix
+    LP_Duality.Move_To_Matrix
 begin
 
 definition one_vec :: "nat \<Rightarrow> 'a :: one vec" ("1\<^sub>v") where
@@ -26,6 +27,33 @@ lemma to_nat_on_less_card:
   shows "to_nat_on A a < card A"
   using assms
   by (auto dest: to_nat_on_finite bij_betwE)
+
+text \<open>A version of the weak duality theorem which does not require equality
+in the dual constraints, but non-negativity of the primal variables.\<close>
+lemma weak_duality_theorem_nonneg_primal: 
+  fixes A :: "'a :: linordered_comm_semiring_strict mat" 
+  assumes A: "A \<in> carrier_mat nr nc" 
+    and b: "b \<in> carrier_vec nr" 
+    and c: "c \<in> carrier_vec nc"
+    and x: "x \<in> carrier_vec nc" 
+    and Axb: "A *\<^sub>v x \<le> b"
+    and x0: "x \<ge> 0\<^sub>v nc"
+    and y0: "y \<ge> 0\<^sub>v nr" 
+    and yA: "A\<^sup>T *\<^sub>v y \<ge> c"
+  shows "c \<bullet> x \<le> b \<bullet> y" 
+proof -
+  from y0 have y: "y \<in> carrier_vec nr" unfolding less_eq_vec_def by auto
+  have "c \<bullet> x \<le> (A\<^sup>T *\<^sub>v y) \<bullet> x"
+    unfolding scalar_prod_def
+    using A c x yA x0
+    by (auto intro!: sum_mono mult_right_mono simp: less_eq_vec_def)
+  also have "\<dots> = y \<bullet> (A *\<^sub>v x)" using x y A by (metis transpose_vec_mult_scalar)
+  also have "\<dots> \<le> y \<bullet> b" 
+    unfolding scalar_prod_def using A b Axb y0
+    by (auto intro!: sum_mono mult_left_mono simp: less_eq_vec_def)
+  also have "\<dots> = b \<bullet> y" using y b by (metis comm_scalar_prod)
+  finally show ?thesis . 
+qed
 
 locale bipartite_matching_lp = 
   fixes L :: "'a set" and R :: "'a set"
@@ -69,8 +97,18 @@ definition incidence_matrix :: "real mat" where
 definition primal_sol :: "'a graph \<Rightarrow> real vec" where
   "primal_sol M \<equiv> vec m (\<lambda>i. of_bool (from_nat_into G i \<in> M))"
 
+lemma incidence_matrix_carrier_mat[intro]: "incidence_matrix \<in> carrier_mat n m"
+  unfolding incidence_matrix_def by simp
+
 lemma dim_primal_sol[simp]: "dim_vec (primal_sol M) = m"
   by (simp add: primal_sol_def)
+
+lemma primal_sol_carrier_vec[intro]: "primal_sol M \<in> carrier_vec m"
+  unfolding carrier_vec_def by simp
+
+lemma primal_sol_nonneg[intro]: "primal_sol M \<ge> 0\<^sub>v m"
+  unfolding primal_sol_def less_eq_vec_def
+  by simp
 
 lemma n_sum: "n = card L + card R"
   using parts_minimal finite_L finite_R
@@ -182,7 +220,7 @@ lemma Vs_enum_neqI: "v \<in> Vs G \<Longrightarrow> v' \<in> Vs G \<Longrightarr
 lemma G_enum_neqI: "e \<in> G \<Longrightarrow> e' \<in> G \<Longrightarrow> e \<noteq> e' \<Longrightarrow> G_enum e \<noteq> G_enum e'"
   by (simp add: countable_finite)
 
-lemma primal_dot_One_card: "M \<subseteq> G \<Longrightarrow> primal_sol M \<bullet> (1\<^sub>v m) = card M"
+lemma primal_dot_One_card: "M \<subseteq> G \<Longrightarrow> 1\<^sub>v m \<bullet> primal_sol M = card M"
   by (auto simp: scalar_prod_def m_def primal_sol_def countable_finite in_mono
            intro!: bij_betw_same_card[where f = "from_nat_into G"] bij_betwI[where g = G_enum] 
                    to_nat_on_less_card to_nat_on_from_nat_into_less)
@@ -273,6 +311,37 @@ lemma matching_iff_feasible:
   shows "matching M \<longleftrightarrow> incidence_matrix *\<^sub>v primal_sol M \<le> 1\<^sub>v n"
   using assms
   by (auto intro: feasible_matching matching_feasible)
+
+lemma card_matching_bound_by_feasible_dual:
+  fixes y :: "real vec"
+  assumes "M \<subseteq> G"
+  assumes "matching M"
+
+  assumes "incidence_matrix\<^sup>T *\<^sub>v y \<ge> 1\<^sub>v m"
+  assumes "y \<ge> 0\<^sub>v n"
+
+  shows "card M \<le> 1\<^sub>v n \<bullet> y"
+proof -
+  from \<open>M \<subseteq> G\<close> have "card M = 1\<^sub>v m \<bullet> primal_sol M"
+    by (subst primal_dot_One_card[symmetric])
+       (auto intro: comm_scalar_prod)
+
+  also from assms have "\<dots> \<le> 1\<^sub>v n \<bullet> y"
+    by (auto intro: weak_duality_theorem_nonneg_primal[where A = incidence_matrix] matching_feasible)
+
+  finally show ?thesis .
+qed
+
+lemma max_card_matching_bound_by_feasible_dual:
+  fixes y :: "real vec"
+  assumes "max_card_matching G M"
+
+  assumes "incidence_matrix\<^sup>T *\<^sub>v y \<ge> 1\<^sub>v m"
+  assumes "y \<ge> 0\<^sub>v n"
+
+  shows "card M \<le> 1\<^sub>v n \<bullet> y"
+  using assms
+  by (auto intro: card_matching_bound_by_feasible_dual dest: max_card_matchingD)
 
 end
 

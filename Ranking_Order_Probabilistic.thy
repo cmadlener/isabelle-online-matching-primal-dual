@@ -99,6 +99,11 @@ lemma AE_PiM_uniform_measure_PiE_countable:
   using assms
   by (subst Pi_iff) (rule AE_ball_countable', intro AE_PiM_uniform_measure_component_in_set; auto)
 
+lemma (in pair_sigma_finite) AE_pair_measure_swap:
+  "AE (x,y) in M1 \<Otimes>\<^sub>M M2. P x y \<Longrightarrow> (AE (y,x) in M2 \<Otimes>\<^sub>M M1. P x y)"
+  by (auto simp: case_prod_beta 
+           intro!: AE_distrD[where M = "M2 \<Otimes>\<^sub>M M1" and  M' = "M1 \<Otimes>\<^sub>M M2" and P = "\<lambda>(x,y). P x y" and f = "\<lambda>(x,y). (y,x)", simplified case_prod_beta fst_conv snd_conv])
+     (subst distr_pair_swap[symmetric])
 
 locale wf_ranking_order_prob = bipartite_matching_lp +
   fixes \<pi> :: "'a list"
@@ -180,9 +185,9 @@ lemma dim_dual_sol[simp]: "dim_vec (dual_sol Y M) = n"
 lemma dual_dot_One_card:
   assumes "M \<subseteq> G"
   assumes "matching M"
-  shows "dual_sol Y M \<bullet> (1\<^sub>v n) = card M / F"
+  shows "1\<^sub>v n \<bullet> dual_sol Y M = card M / F"
 proof -
-  from graph have "dual_sol Y M \<bullet> (1\<^sub>v n) = 
+  from graph have "1\<^sub>v n \<bullet> dual_sol Y M = 
     (\<Sum>i\<in>{0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> {i. i < card L}. g (Y (Vs_enum_inv i)) / F) +
     (\<Sum>i\<in>{0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> - {i. i < card L}. (1 - g (Y (THE l. {l, Vs_enum_inv i} \<in> M))) / F)"
     by (simp add: dual_sol_def scalar_prod_def sum.If_cases)
@@ -318,7 +323,7 @@ qed
 lemma primal_is_dual_times_F:
   assumes "M \<subseteq> G"
   assumes "matching M"
-  shows "primal_sol M \<bullet> (1\<^sub>v m) = dual_sol Y M \<bullet> (1\<^sub>v n) * F"
+  shows "1\<^sub>v m \<bullet> primal_sol M = 1\<^sub>v n \<bullet> dual_sol Y M * F"
   using assms F_gt_0
   by (auto simp: primal_dot_One_card dual_dot_One_card)
 
@@ -950,6 +955,8 @@ lemma AE_PiM_subset_L_U_funcset:
   by (intro AE_PiM_uniform_measure_PiE_countable)
      (auto intro: countable_finite finite_subset)
 
+lemmas AE_Y_funcset = AE_PiM_subset_L_U_funcset[where L' = L, OF subset_refl]
+
 lemma AE_U_in_range: "AE y in U. y \<in> {0..1}"
   by (auto intro: AE_uniform_measureI)
 
@@ -959,12 +966,6 @@ lemma funcset_update:
   shows "Y(i := y) \<in> L \<rightarrow> S"
   using assms
   by auto
-
-lemma (in pair_sigma_finite) AE_pair_measure_swap:
-  "AE (x,y) in M1 \<Otimes>\<^sub>M M2. P x y \<Longrightarrow> (AE (y,x) in M2 \<Otimes>\<^sub>M M1. P x y)"
-  by (auto simp: case_prod_beta 
-           intro!: AE_distrD[where M = "M2 \<Otimes>\<^sub>M M1" and  M' = "M1 \<Otimes>\<^sub>M M2" and P = "\<lambda>(x,y). P x y" and f = "\<lambda>(x,y). (y,x)", simplified case_prod_beta fst_conv snd_conv])
-     (subst distr_pair_swap[symmetric])
 
 lemma AE_add_dim_in_range:
   "AE (y,Y) in (U \<Otimes>\<^sub>M Pi\<^sub>M (L - {i}) (\<lambda>i. U)). y \<in> {0..1}"
@@ -1481,17 +1482,20 @@ proof (intro conjI allI impI, simp_all add: incidence_matrix_def)
     .
 qed
 
-lemma "expectation (\<lambda>Y. card (ranking (linorder_from_keys L Y) G \<pi>)) =
-  expectation (\<lambda>Y. primal_sol (ranking (linorder_from_keys L Y) G \<pi>) \<bullet> 1\<^sub>v m)"
-  by (subst primal_dot_One_card, rule ranking_subgraph)
-      auto
+lemma expected_dual_nonneg: "expected_dual \<ge> 0\<^sub>v n"
+  unfolding Matrix.less_eq_vec_def
+proof (intro conjI allI impI, simp_all, intro integral_ge_const integrable_dual_component)
+  fix k
+  assume "k < n"
 
-lemma "expectation (\<lambda>Y. primal_sol (ranking (linorder_from_keys L Y) G \<pi>) \<bullet> 1\<^sub>v m) =
-  expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) \<bullet> 1\<^sub>v n * F)"
-  apply (rule Bochner_Integration.integral_cong, rule refl)
-  apply (subst primal_is_dual_times_F; (rule ranking_subgraph matching_ranking | simp))
-        apply (use F_gt_0 in auto)
-  done
+  have "j \<in> Vs (ranking (linorder_from_keys L Y) G \<pi>) \<Longrightarrow> j \<in> R \<Longrightarrow> (THE l. {l, j} \<in> ranking (linorder_from_keys L Y) G \<pi>) \<in> L" for j Y
+    by (auto intro!: the_ranking_match_left)
+
+  with \<open>k < n\<close> show "AE Y in Y_measure. 0 \<le> dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ k"
+    unfolding dual_sol_def
+    by (intro eventually_mono[OF AE_Y_funcset])
+       (auto intro!: g_nonnegI g_less_eq_OneI simp: Pi_iff elim: Vs_enum_inv_leftE Vs_enum_inv_rightE)
+qed blast
 
 
 lemma "expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) \<bullet> 1\<^sub>v n) =
@@ -1509,4 +1513,48 @@ proof -
 
   finally show ?thesis .
 qed
+
+theorem ranking_F_competitive:
+  assumes "G \<noteq> {}"
+  assumes "max_card_matching G M"
+
+  shows "expectation (\<lambda>Y. card (ranking (linorder_from_keys L Y) G \<pi>)) / card M \<ge> F" (is "?EM / _ \<ge> _")
+proof -
+  from assms have "M \<noteq> {}" "finite M"
+    by (auto dest: max_card_matching_non_empty max_card_matchingD finite_subset)
+    
+  then have "card M > 0"
+    by auto
+
+  from assms have max_card_bound: "card M \<le> 1\<^sub>v n \<bullet> expected_dual"
+    by (auto intro: max_card_matching_bound_by_feasible_dual expected_dual_feasible expected_dual_nonneg)
+
+  have "?EM = expectation (\<lambda>Y. 1\<^sub>v m \<bullet> primal_sol (ranking (linorder_from_keys L Y) G \<pi>))"
+    by (subst primal_dot_One_card, rule ranking_subgraph)
+        auto
+
+  also have "\<dots> = expectation (\<lambda>Y. 1\<^sub>v n \<bullet> dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) * F)"
+    by (intro Bochner_Integration.integral_cong refl primal_is_dual_times_F ranking_subgraph matching_ranking)
+        auto
+
+  also have "\<dots> = 1\<^sub>v n \<bullet> expected_dual * F" (is "?E = ?Edot1F")
+  proof -
+    from F_gt_0 have "?E = expectation (\<lambda>Y. \<Sum>i\<in>{0..<n}. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i) * F"
+      by (auto simp: scalar_prod_def)
+
+    also have "\<dots> = (\<Sum>i\<in>{0..<n}. expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i)) * F"
+      by (auto intro!: Bochner_Integration.integral_sum intro: integrable_dual_component)
+
+    also have "\<dots> = ?Edot1F"
+      by (auto simp: scalar_prod_def)
+
+    finally show ?thesis .
+  qed
+
+  finally have "?EM = ?Edot1F" .
+
+  with F_gt_0 max_card_bound \<open>card M > 0\<close> show ?thesis
+    by (auto intro: mult_imp_le_div_pos mult_left_mono simp: mult.commute)
+qed
+
 end
