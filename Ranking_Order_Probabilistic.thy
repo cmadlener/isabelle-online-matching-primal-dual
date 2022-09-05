@@ -42,7 +42,6 @@ lemma linorder_from_keys_update_eq:
   unfolding linorder_from_keys_def
   by auto
 
-find_theorems almost_everywhere measurable
 text \<open>Generalize @{thm measurable_linorder_from_keys_restrict} by Eberl from
  \<^term>\<open>count_space (Pow (A \<times> A))\<close> to \<^term>\<open>count_space (preorders_on A)\<close>. The original
   statement then also follows with @{thm measurable_count_space_extend}.}\<close>
@@ -1493,23 +1492,6 @@ proof (intro conjI allI impI, simp_all, intro integral_ge_const integrable_dual_
        (auto intro!: g_nonnegI g_less_eq_OneI simp: Pi_iff elim: Vs_enum_inv_leftE Vs_enum_inv_rightE)
 qed blast
 
-
-lemma "expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) \<bullet> 1\<^sub>v n) =
-  expected_dual \<bullet> 1\<^sub>v n" (is "?E = ?Edot1")
-proof -
-  have "?E = expectation (\<lambda>Y. \<Sum>i\<in>{0..<n}. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i)"
-    by (auto simp: scalar_prod_def)
-
-  also have "\<dots> = (\<Sum>i\<in>{0..<n}. expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i))"
-    by (rule Bochner_Integration.integral_sum)
-       (auto intro: integrable_dual_component)
-
-  also have "\<dots> = ?Edot1"
-    by (auto simp: scalar_prod_def)
-
-  finally show ?thesis .
-qed
-
 theorem ranking_F_competitive:
   assumes "G \<noteq> {}"
   assumes "max_card_matching G M"
@@ -1552,6 +1534,30 @@ proof -
   with F_gt_0 max_card_bound \<open>card M > 0\<close> show ?thesis
     by (auto intro: mult_imp_le_div_pos mult_left_mono simp: mult.commute)
 qed
+
+lemma expectation_ranking_eq_random_linorder:
+  "expectation (\<lambda>Y. card (ranking (linorder_from_keys L Y) G \<pi>)) =
+    prob_space.expectation (uniform_measure (count_space (Pow (L \<times> L))) (linorders_on L)) (\<lambda>r. card (ranking r G \<pi>))"
+  (is "?EY = ?Er")
+proof -
+  from finite_L have "?EY = prob_space.expectation (distr (\<Pi>\<^sub>M i \<in> L. uniform_measure lborel {0..1::real}) (count_space (Pow (L \<times> L))) (linorder_from_keys L))
+                              (\<lambda>r. card (ranking r G \<pi>))"
+    by (intro integral_distr[symmetric]) 
+       (use measurable_linorder_from_keys_restrict in measurable)
+
+  also from finite_L have "\<dots> = prob_space.expectation (uniform_measure (count_space (Pow (L \<times> L))) (linorders_on L)) (\<lambda>r. card (ranking r G \<pi>))"
+    by (auto simp: random_linorder_by_prios)
+
+  finally show ?thesis .
+qed
+
+corollary ranking_F_competitive_random_linorder:
+  assumes "G \<noteq> {}"
+  assumes "max_card_matching G M"
+  shows
+    "prob_space.expectation (uniform_measure (count_space (Pow (L \<times> L))) (linorders_on L)) (\<lambda>r. card (ranking r G \<pi>)) / card M \<ge> F"
+  using assms
+  by (auto simp flip: expectation_ranking_eq_random_linorder intro: ranking_F_competitive)
 
 end
 
@@ -1597,7 +1603,7 @@ proof -
   finally show ?thesis .
 qed
 
-theorem ranking_competitive_ratio:
+theorem
   assumes "bipartite G L R"
   assumes "finite L" "finite R" "Vs G = L \<union> R"
 
@@ -1605,14 +1611,19 @@ theorem ranking_competitive_ratio:
   assumes "\<pi> \<in> permutations_of_set R"
   assumes "max_card_matching G M"
 
-  shows "prob_space.expectation (\<Pi>\<^sub>M i \<in> L. uniform_measure lborel {0..1::real}) (\<lambda>Y. card (ranking (linorder_from_keys L Y) G \<pi>)) / card M
-    \<ge> 1 - exp(-1)"
+  shows ranking_competitive_ratio: 
+    "prob_space.expectation (\<Pi>\<^sub>M i \<in> L. uniform_measure lborel {0..1::real}) (\<lambda>Y. card (ranking (linorder_from_keys L Y) G \<pi>)) / card M
+      \<ge> 1 - exp(-1)" (is "?EY \<ge> _")
+
+  and ranking_competitive_ratio_random_linorder:
+    "prob_space.expectation (uniform_measure (count_space (Pow (L \<times> L))) (linorders_on L)) (\<lambda>r. card (ranking r G \<pi>)) / card M
+      \<ge> 1 - exp(-1)" (is "?Er \<ge> _")
 proof -
   from assms interpret wf_ranking_order_prob_exp: wf_ranking_order_prob L R G \<pi> "\<lambda>y. exp(y-1)" "1 - exp(-1)"
     by unfold_locales (auto intro: mono_onI simp: exp_minus_One_integral_zero_one)
 
-  from assms show ?thesis
-    by (intro wf_ranking_order_prob_exp.ranking_F_competitive)
+  from assms show "?EY \<ge> 1 - exp(-1)" "?Er \<ge> 1 - exp(-1)"
+    by (auto intro: wf_ranking_order_prob_exp.ranking_F_competitive wf_ranking_order_prob_exp.ranking_F_competitive_random_linorder)
 qed
 
 end
