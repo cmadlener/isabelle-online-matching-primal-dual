@@ -1074,8 +1074,8 @@ qed (use assms in auto)
 
 lemma integrable_integral_bound_but_i:
   assumes "j \<in> R"
-  shows "integrable (Pi\<^sub>M (L - {i}) (\<lambda>i. U)) (\<lambda>Y. \<integral>y. g y * indicat_real {0..<y\<^sub>c Y \<pi> i j} y \<partial>U + (1 - g (y\<^sub>c Y \<pi> i j)))"
-proof (intro Bochner_Integration.integrable_add integrableI_real_bounded U_prob_space.borel_measurable_lebesgue_integral, goal_cases)
+  shows "integrable (Pi\<^sub>M (L - {i}) (\<lambda>i. U)) (\<lambda>Y. \<integral>y. g y * indicat_real {0..<y\<^sub>c Y \<pi> i j} y \<partial>U + 1 - g (y\<^sub>c Y \<pi> i j))"
+proof (intro Bochner_Integration.integrable_add Bochner_Integration.integrable_diff integrableI_real_bounded U_prob_space.borel_measurable_lebesgue_integral, goal_cases)
   case 1
   then show ?case
   proof (subst split_comp_eq[symmetric],
@@ -1108,23 +1108,19 @@ next
   then show ?case
     by (simp add: order_le_less_trans)
 next
-  case 4
-  from \<open>j \<in> R\<close> show ?case
-    by measurable
+  case 8
+  from assms show ?case
+    by (auto intro!: g_nonnegI eventually_mono[OF AE_PiM_subset_L_U_funcset] dest: y\<^sub>c_bounded)
 next
-  case 5
-  from assms show ?case 
-    by (auto intro!: g_less_eq_OneI eventually_mono[OF AE_PiM_subset_L_U_funcset] dest: y\<^sub>c_bounded)
-next
-  case 6
-
-  from assms have "\<integral>\<^sup>+ x. (1 - g (y\<^sub>c x \<pi> i j)) \<partial>Pi\<^sub>M (L - {i}) (\<lambda>i. U) \<le> 1"
+  case 9
+  
+  from assms have "\<integral>\<^sup>+ x. g (y\<^sub>c x \<pi> i j) \<partial>Pi\<^sub>M (L - {i}) (\<lambda>i. U) \<le> 1"
     by (auto intro!: subprob_space.nn_integral_le_const prob_space_imp_subprob_space prob_space_PiM_U 
-                     eventually_mono[OF AE_PiM_subset_L_U_funcset] g_nonnegI dest: y\<^sub>c_bounded)
+                     eventually_mono[OF AE_PiM_subset_L_U_funcset] g_less_eq_OneI dest: y\<^sub>c_bounded)
 
   then show ?case
     by (simp add: order_le_less_trans)
-qed
+qed (use \<open>j \<in> R\<close> in \<open>simp_all add: emeasure_space_PiM_U\<close>)
 
 lemma linorder_on_linorder_from_keys_insert:
   assumes linorder: "linorder_on A (linorder_from_keys A f)"
@@ -1273,7 +1269,7 @@ proof -
     case 1
 
     from \<open>j \<in> R\<close> show ?case
-      by (auto simp flip: add_divide_distrib intro: integrable_integral_bound_but_i)
+      by (auto simp flip: add_divide_distrib simp: add_diff_eq intro: integrable_integral_bound_but_i)
   next
     case 2
     show ?case
@@ -1418,8 +1414,8 @@ proof -
 
   finally have "?Ei_plus_Ej \<ge> ?integral_bound1" .
 
-  have "?integral_bound1 = \<integral>Y. \<integral>y. g y * indicator {0..<y\<^sub>c Y \<pi> i j} y \<partial>U + (1 - g (y\<^sub>c Y \<pi> i j)) \<partial>(\<Pi>\<^sub>M i \<in> L - {i}. U) / F "
-    by (auto simp flip: add_divide_distrib)
+  have "?integral_bound1 = \<integral>Y. \<integral>y. g y * indicator {0..<y\<^sub>c Y \<pi> i j} y \<partial>U + 1 - g (y\<^sub>c Y \<pi> i j) \<partial>(\<Pi>\<^sub>M i \<in> L - {i}. U) / F "
+    by (auto simp flip: add_divide_distrib simp: algebra_simps)
 
   also have "\<dots> \<ge> \<integral>Y. F \<partial>(\<Pi>\<^sub>M i \<in> L - {i}. U) / F" (is "_ \<ge> ?integral_bound2")
   proof (subst div_F_less_eq_cancel, intro integral_mono_AE, goal_cases)
