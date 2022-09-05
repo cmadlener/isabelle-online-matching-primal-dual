@@ -116,7 +116,7 @@ locale wf_ranking_order_prob = bipartite_matching_lp +
   assumes g_One: "g 1 = 1"
   assumes g_borel[measurable]: "g \<in> borel_measurable borel"
 
-  assumes g_integral_bound: "0 \<le> \<theta> \<Longrightarrow> \<theta> \<le> 1 \<Longrightarrow> \<integral>y. g y * indicator {0..<\<theta>} y \<partial>uniform_measure lborel {0..1} + (1 - g \<theta>) \<ge> F"
+  assumes g_integral_bound: "0 \<le> \<theta> \<Longrightarrow> \<theta> \<le> 1 \<Longrightarrow> \<integral>y. g y * indicator {0..<\<theta>} y \<partial>uniform_measure lborel {0..1} + 1 - g \<theta> \<ge> F"
 
   assumes F_gt_0: "0 < F"
 begin
@@ -1555,6 +1555,68 @@ proof -
 
   with F_gt_0 max_card_bound \<open>card M > 0\<close> show ?thesis
     by (auto intro: mult_imp_le_div_pos mult_left_mono simp: mult.commute)
+qed
+
+end
+
+lemma ennreal_divide_one: "(x::ennreal) / 1 = x"
+  unfolding divide_ennreal_def
+  by simp
+
+lemma exp_minus_One_integral_zero_one:
+  fixes \<theta> :: real
+  assumes "0 \<le> \<theta>" "\<theta> \<le> 1"
+  shows "\<integral>y. exp(y-1) * indicator {0..<\<theta>} y \<partial>uniform_measure lborel {0..1::real} = exp(\<theta>-1) - exp(-1)"
+    (is "?L = ?R")
+proof -
+  from \<open>\<theta> \<le> 1\<close> have interval_Int: "{0..<\<theta>} \<inter> {0..1} = {0..<\<theta>}"
+    unfolding atLeastLessThan_def atLeastAtMost_def lessThan_def atMost_def
+    by auto
+
+  from \<open>0 \<le> \<theta>\<close> have sym_diff_singleton: "sym_diff {0..<\<theta>} {0..\<theta>} =  {\<theta>}"
+    by auto
+
+  then have *: "\<integral>\<^sup>+x\<in>{0..<\<theta>}. f x \<partial>lborel = \<integral>\<^sup>+x\<in>{0..\<theta>}. f x \<partial>lborel" for f
+    by (auto intro!: nn_integral_null_delta)
+
+  have "?L = enn2real (\<integral>\<^sup>+y. (exp(y-1) * indicator {0..<\<theta>} y) \<partial>uniform_measure lborel {0..1})"
+    by (auto simp: integral_eq_nn_integral)
+
+  also have "\<dots> = enn2real (\<integral>\<^sup>+y. exp(y-1) * indicator {0..<\<theta>} y * indicator {0..1} y \<partial>lborel)"
+    by (subst nn_integral_uniform_measure, measurable)
+       (simp add: ennreal_divide_one ennreal_mult'' flip: ennreal_indicator)
+
+  also have "\<dots> = enn2real (\<integral>\<^sup>+y. exp(y-1) * indicator {0..<\<theta>} y \<partial>lborel)"
+    using assms
+    by (auto simp flip: indicator_inter_arith simp: mult.assoc interval_Int)
+
+  also have "\<dots> = enn2real (\<integral>\<^sup>+y\<in>{0..\<theta>}. exp(y-1) \<partial>lborel)"
+    by (auto simp: ennreal_mult'' ennreal_indicator *)
+
+  also from \<open>0 \<le> \<theta>\<close> have "\<dots> = exp(\<theta> - 1) - exp(-1)"
+    by (subst nn_integral_FTC_Icc[where F = "\<lambda>x. exp (x-1)"])
+       (auto intro!: DERIV_fun_exp[where m = 1, simplified]
+                     Deriv.field_differentiable_diff[where g' = 0, simplified])
+
+  finally show ?thesis .
+qed
+
+theorem ranking_competitive_ratio:
+  assumes "bipartite G L R"
+  assumes "finite L" "finite R" "Vs G = L \<union> R"
+
+  assumes "G \<noteq> {}"
+  assumes "\<pi> \<in> permutations_of_set R"
+  assumes "max_card_matching G M"
+
+  shows "prob_space.expectation (\<Pi>\<^sub>M i \<in> L. uniform_measure lborel {0..1::real}) (\<lambda>Y. card (ranking (linorder_from_keys L Y) G \<pi>)) / card M
+    \<ge> 1 - exp(-1)"
+proof -
+  from assms interpret wf_ranking_order_prob_exp: wf_ranking_order_prob L R G \<pi> "\<lambda>y. exp(y-1)" "1 - exp(-1)"
+    by unfold_locales (auto intro: mono_onI simp: exp_minus_One_integral_zero_one)
+
+  from assms show ?thesis
+    by (intro wf_ranking_order_prob_exp.ranking_F_competitive)
 qed
 
 end
