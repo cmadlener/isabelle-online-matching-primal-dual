@@ -104,6 +104,11 @@ lemma (in pair_sigma_finite) AE_pair_measure_swap:
            intro!: AE_distrD[where M = "M2 \<Otimes>\<^sub>M M1" and  M' = "M1 \<Otimes>\<^sub>M M2" and P = "\<lambda>(x,y). P x y" and f = "\<lambda>(x,y). (y,x)", simplified case_prod_beta fst_conv snd_conv])
      (subst distr_pair_swap[symmetric])
 
+
+lemma (in pair_sigma_finite) pair_sigma_finite_swap: "pair_sigma_finite M2 M1"
+  by (simp add: M1.sigma_finite_measure_axioms M2.sigma_finite_measure_axioms pair_sigma_finite_def)
+
+
 locale wf_ranking_order_prob = bipartite_matching_lp +
   fixes \<pi> :: "'a list"
   fixes g :: "real \<Rightarrow> real" and F :: real
@@ -141,9 +146,6 @@ lemma emeasure_space_PiM_U:
 
 lemma pair_sigma_finite_split_dim[intro]: "pair_sigma_finite U (Pi\<^sub>M (L - {i}) (\<lambda>i. U))"
   by (intro pair_sigma_finite.intro prob_space_imp_sigma_finite prob_space_PiM) blast+
-
-lemma (in pair_sigma_finite) pair_sigma_finite_swap: "pair_sigma_finite M2 M1"
-  by (simp add: M1.sigma_finite_measure_axioms M2.sigma_finite_measure_axioms pair_sigma_finite_def)
 
 lemmas pair_sigma_finite_split_dim'[intro] = pair_sigma_finite.pair_sigma_finite_swap[OF pair_sigma_finite_split_dim]
 
@@ -537,9 +539,9 @@ proof (cases "j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \
     unfolding linorder_from_keys_def
     by simp
   
-  with True j_matched index_j i_left g_mono \<open>{i,j} \<in> G\<close> \<open>Y \<in> L \<rightarrow> {0..1}\<close> show ?thesis
+  with True j_matched index_j i_left g_mono \<open>{i,j} \<in> G\<close> \<open>Y \<in> L \<rightarrow> {0..1}\<close> \<open>j \<in> R\<close> show ?thesis
     unfolding y\<^sub>c_def dual_sol_def
-    by (auto simp: the_i' the_i'' dest!: edges_are_Vs intro!: mono_onD[where f = g])
+    by (auto simp: the_i' the_i'' dest: mono_onD)
 next
   case False
   note j_unmatched' = this
@@ -1395,7 +1397,7 @@ proof -
             qed
               
             with * show ?case
-              by (auto simp: indicator_times_eq_if dest: dual_sol_funcset[where X = "{}", simplified])
+              by (auto simp: indicator_times_eq_if)
           next
             case 2
             with \<open>i \<in> L\<close> \<open>j \<in> R\<close> \<open>{i,j} \<in> G\<close> show ?case 
@@ -1575,7 +1577,7 @@ proof -
     unfolding atLeastLessThan_def atLeastAtMost_def lessThan_def atMost_def
     by auto
 
-  from \<open>0 \<le> \<theta>\<close> have sym_diff_singleton: "sym_diff {0..<\<theta>} {0..\<theta>} =  {\<theta>}"
+  from \<open>0 \<le> \<theta>\<close> have sym_diff_singleton: "sym_diff {0..<\<theta>} {0..\<theta>} = {\<theta>}"
     by auto
 
   then have *: "\<integral>\<^sup>+x\<in>{0..<\<theta>}. f x \<partial>lborel = \<integral>\<^sup>+x\<in>{0..\<theta>}. f x \<partial>lborel" for f

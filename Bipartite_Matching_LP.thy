@@ -323,8 +323,7 @@ lemma card_matching_bound_by_feasible_dual:
   shows "card M \<le> 1\<^sub>v n \<bullet> y"
 proof -
   from \<open>M \<subseteq> G\<close> have "card M = 1\<^sub>v m \<bullet> primal_sol M"
-    by (subst primal_dot_One_card[symmetric])
-       (auto intro: comm_scalar_prod)
+    by (auto simp: primal_dot_One_card)
 
   also from assms have "\<dots> \<le> 1\<^sub>v n \<bullet> y"
     by (auto intro: weak_duality_theorem_nonneg_primal[where A = incidence_matrix] matching_feasible)
