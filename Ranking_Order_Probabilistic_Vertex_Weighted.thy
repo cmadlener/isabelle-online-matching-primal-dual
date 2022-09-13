@@ -1256,12 +1256,132 @@ next
     by (simp add: order_le_less_trans)
 qed (use \<open>j \<in> R\<close> in \<open>simp_all add: emeasure_space_PiM_U\<close>)
 
-text \<open>Adapted from Eberl's @{thm emeasure_PiM_diagonal}.\<close>
+lemma weighted_eq_iff_priority_ln:
+  assumes "i \<in> L" "i' \<in> L"
+  assumes "0 < 1 - v i' * (1 - g y') / v i"
+  shows "v i * (1 - g y) = v i' * (1 - g y') \<longleftrightarrow> y = ln (1 - v i' * (1 - g y') / v i) + 1"
+proof -
+  from assms have "v i * (1 - g y) = v i' * (1 - g y') \<longleftrightarrow> 1 - g y = v i' * (1 - g y') / v i"
+    by (metis mult.commute nonzero_eq_divide_eq order_less_irrefl weights_pos)
+
+  also have "\<dots> \<longleftrightarrow> g y = 1 - v i' * (1 - g y') / v i"
+    by auto
+
+  also have "\<dots> \<longleftrightarrow> y - 1 = ln (1 - v i' * (1 - g y') / v i)"
+    by (metis assms(3) exp_ln ln_unique)
+
+  also have "\<dots> \<longleftrightarrow> y = ln (1 - v i' * (1 - g y') / v i) + 1"
+    by auto
+
+  finally show ?thesis .
+qed
+
+lemma weighted_eq_at_most_one:
+  assumes "i \<in> L" "i' \<in> L"
+  shows "{y. v i * (1 - exp (y - 1)) = v i' * (1 - exp (y' - 1))} = (
+    if 0 < 1 - v i' * (1 - g y') / v i
+    then {ln (1 - v i' * (1 - g y') / v i) + 1}
+    else {})"
+  using assms
+proof (cases "0 < 1 - v i' * (1 - g y') / v i")
+  case True
+  with assms weighted_eq_iff_priority_ln show ?thesis
+    by auto
+next
+  case False
+  with assms show ?thesis
+    apply auto
+    by (smt (verit, del_insts) divide_less_eq_1 exp_gt_zero nonzero_mult_div_cancel_left)
+qed
+
+text \<open>Adapted from Eberl's @{thm emeasure_PiM_diagonal}. Cannot use the whole calculation like in
+  that lemma since it blows up.\<close>
 lemma emeasure_PiM_equal_weights:
   assumes "L' \<subseteq> L"
   assumes "x \<in> L'" "y \<in> L'" "x \<noteq> y"
   shows "emeasure (PiM L' (\<lambda>_. U)) {h\<in>L' \<rightarrow>\<^sub>E UNIV. v x * (1 - g (h x)) = v y * (1 - g (h y))} = 0"
-  sorry
+proof -
+  from finite_L \<open>L' \<subseteq> L\<close> have fin: "finite L'"
+    by (auto intro: finite_subset)
+
+  interpret product_prob_space "\<lambda>_. U" L'
+    unfolding product_prob_space_def product_prob_space_axioms_def product_sigma_finite_def
+    by (auto intro: prob_space_imp_sigma_finite)
+
+  have [measurable]: "{h\<in>extensional {x,y}. v x * (1 - g (h x)) = v y * (1 - g (h y))} \<in> sets (PiM {x,y} (\<lambda>_. lborel))"
+  proof -
+    have "{h\<in>extensional {x,y}. v x * (1 - g (h x)) = v y * (1 - g (h y))} =
+      {h \<in> space (PiM {x,y} (\<lambda>_. lborel)). v x * (1 - g (h x)) = v y * (1 - g (h y))}"
+      by (auto simp: extensional_def space_PiM)
+
+    also have "\<dots> \<in> sets (PiM {x,y} (\<lambda>_. lborel))"
+      by measurable
+    finally show ?thesis .
+  qed
+  have [simp]: "sets (PiM A (\<lambda>_. U)) = sets (PiM A (\<lambda>_. lborel))" for A :: "'a set"
+    by (intro sets_PiM_cong refl) simp
+
+  have 1: "{h\<in>L' \<rightarrow>\<^sub>E UNIV. v x * (1 - g (h x)) = v y * (1 - g (h y))} =
+    (\<lambda>h. restrict h {x, y}) -` {h\<in>extensional {x,y}. v x * (1 - g (h x)) = v y * (1 - g (h y))} \<inter> space (PiM L' (\<lambda>_. U))"
+    by (auto simp: space_PiM)
+
+  have 2: "emeasure (PiM L' (\<lambda>_. U)) {h\<in>L' \<rightarrow>\<^sub>E UNIV. v x * (1 - g (h x)) = v y * (1 - g (h y))} =
+    emeasure (distr (PiM L' (\<lambda>_. U)) (PiM {x,y} (\<lambda>_. lborel :: real measure))
+      (\<lambda>h. restrict h {x,y})) {h\<in>extensional {x,y}. v x * (1 - g (h x)) = v y * (1 - g (h y))}"
+  proof (subst 1, rule emeasure_distr[symmetric])
+    have "(\<lambda>h. restrict h {x,y}) \<in> PiM L' (\<lambda>_. lborel) \<rightarrow>\<^sub>M PiM {x,y} (\<lambda>_. lborel)"
+      using assms by (intro measurable_restrict_subset) auto
+
+    also have "\<dots> = PiM L' (\<lambda>_. U) \<rightarrow>\<^sub>M PiM {x,y} (\<lambda>_. lborel)"
+      by (intro sets_PiM_cong measurable_cong_sets refl) simp_all
+
+    finally show "(\<lambda>h. restrict h {x,y}) \<in> \<dots>" .
+  next
+    show "{h\<in>extensional {x,y}. v x * (1 - g (h x)) = v y * (1 - g (h y))} \<in> sets (PiM {x,y} (\<lambda>_. lborel))"
+      by simp
+  qed
+
+  have "distr (PiM L' (\<lambda>_. U)) (PiM {x,y} (\<lambda>_. lborel :: real measure)) (\<lambda>h. restrict h {x,y}) =
+              distr (PiM L' (\<lambda>_. U)) (PiM {x,y} (\<lambda>_. U)) (\<lambda>h. restrict h {x,y})" (is "?distr = _")
+    by (intro distr_cong refl sets_PiM_cong) simp_all
+
+  also from assms fin have "\<dots> = PiM {x,y} (\<lambda>_. U)"
+    by (intro distr_restrict[symmetric]) auto
+
+  finally have 3: "?distr = PiM {x,y} (\<lambda>_. U)" .
+
+  have "emeasure \<dots> {h\<in>extensional {x,y}. v x * (1 - g (h x)) = v y * (1 - g (h y))} =
+    nn_integral \<dots> (\<lambda>h. indicator {h\<in>extensional {x,y}. v x * (1 - g (h x)) = v y * (1 - g (h y))} h)"
+    by (intro nn_integral_indicator[symmetric]) simp
+
+  also have "\<dots> = nn_integral (PiM {x,y} (\<lambda>_. U)) (\<lambda>h. if v x * (1 - g (h x)) = v y * (1 - g (h y)) then 1 else 0)"
+    by (intro nn_integral_cong) (auto simp: indicator_def space_PiM PiE_def)
+
+  also from \<open>x \<noteq> y\<close> have "\<dots> = (\<integral>\<^sup>+z. (if v x * (1 - g (fst z)) = v y * (1 - g (snd z)) then 1 else 0) \<partial>(U \<Otimes>\<^sub>M U))"
+    by (intro product_nn_integral_pair) auto
+
+  also have "\<dots> = \<integral>\<^sup>+y\<^sub>y. (\<integral>\<^sup>+y\<^sub>x. (if v x * (1 - g y\<^sub>x) = v y * (1 - g y\<^sub>y) then 1 else 0) \<partial>U) \<partial>U"
+    by (subst pair_sigma_finite.nn_integral_snd[symmetric])
+       (auto simp: pair_sigma_finite_def intro: prob_space_imp_sigma_finite)
+
+  also have "\<dots> = \<integral>\<^sup>+y\<^sub>y. (\<integral>\<^sup>+y\<^sub>x. indicator {z. v x * (1 - g z) = v y * (1 - g y\<^sub>y)} y\<^sub>x \<partial>U) \<partial>U"
+    by (simp add: indicator_def of_bool_def)
+
+  also have "\<dots> = \<integral>\<^sup>+y\<^sub>y. emeasure U {z. v x * (1 - g z) = v y * (1 - g y\<^sub>y)} \<partial>U"
+    by (subst nn_integral_indicator) simp_all
+
+  also from assms have "\<dots> = \<integral>\<^sup>+y\<^sub>y. emeasure U (if 0 < 1 - v y * (1 - g y\<^sub>y) / v x then {ln (1 - v y * (1 - g y\<^sub>y) / v x) + 1} else {}) \<partial>U"
+    by (subst weighted_eq_at_most_one) auto
+
+  also have "\<dots> = \<integral>\<^sup>+y\<^sub>y. 0 \<partial>U"
+    by (intro nn_integral_cong_AE AE_uniform_measureI AE_I2)
+       (auto intro: emeasure_lborel_countable)
+
+  also have "\<dots> = 0" by simp
+
+  finally show ?thesis
+    by (simp add: 2 3)
+qed
 
 text \<open>Adapted from Eberl's @{thm almost_everywhere_linorder}.\<close>
 lemma almost_everywhere_linorder_weighted_linorder_from_keys:
@@ -1343,44 +1463,6 @@ proof -
       by (subst linorder_from_insert, unfold linorder_on_def total_on_def)
          auto
   qed
-qed
-
-lemma weighted_eq_iff_priority_ln:
-  assumes "i \<in> L" "i' \<in> L"
-  assumes "0 < 1 - v i' * (1 - g y') / v i"
-  shows "v i * (1 - g y) = v i' * (1 - g y') \<longleftrightarrow> y = ln (1 - v i' * (1 - g y') / v i) + 1"
-proof -
-  from assms have "v i * (1 - g y) = v i' * (1 - g y') \<longleftrightarrow> 1 - g y = v i' * (1 - g y') / v i"
-    by (metis mult.commute nonzero_eq_divide_eq order_less_irrefl weights_pos)
-
-  also have "\<dots> \<longleftrightarrow> g y = 1 - v i' * (1 - g y') / v i"
-    by auto
-
-  also have "\<dots> \<longleftrightarrow> y - 1 = ln (1 - v i' * (1 - g y') / v i)"
-    by (metis assms(3) exp_ln ln_unique)
-
-  also have "\<dots> \<longleftrightarrow> y = ln (1 - v i' * (1 - g y') / v i) + 1"
-    by auto
-
-  finally show ?thesis .
-qed
-
-lemma weighted_eq_at_most_one:
-  assumes "i \<in> L" "i' \<in> L"
-  shows "{y. v i * (1 - exp (y - 1)) = v i' * (1 - exp (y' - 1))} = (
-    if 0 < 1 - v i' * (1 - g y') / v i
-    then {ln (1 - v i' * (1 - g y') / v i) + 1}
-    else {})"
-  using assms
-proof (cases "0 < 1 - v i' * (1 - g y') / v i")
-  case True
-  with assms weighted_eq_iff_priority_ln show ?thesis
-    by auto
-next
-  case False
-  with assms show ?thesis
-    apply auto
-    by (smt (verit, del_insts) divide_less_eq_1 exp_gt_zero nonzero_mult_div_cancel_left)
 qed
 
 lemma AE_linorder_on_linorder_from_keys_add_dim:
