@@ -22,11 +22,23 @@ lemma max_value_matchingD:
   unfolding max_value_matching_def
   by auto
 
+lemma the_lE:
+  assumes "e \<in> G"
+  obtains "(THE l. l \<in> L \<and> l \<in> e) \<in> L" "(THE l. l \<in> L \<and> l \<in> e) \<in> e"
+proof
+  from assms bipartite_graph obtain l r where "e = {l,r}" "l \<in> L" "r \<in> R"
+    by (auto elim: bipartite_edgeE)
+
+  then have "(THE l. l \<in> L \<and> l \<in> e) = l"
+    by auto
+
+  with \<open>e = {l,r}\<close> \<open>l \<in> L\<close> show "(THE l. l \<in> L \<and> l \<in> e) \<in> L" "(THE l. l \<in> L \<and> l \<in> e) \<in> e"
+    by auto
+qed
+
 lemma value_pos:
   "e \<in> G \<Longrightarrow> 0 < v (THE l. l \<in> L \<and> l \<in> e)"
-  using bipartite_graph
-  apply (auto intro!: weights_pos elim!: bipartite_edgeE)
-  by (smt (verit) bipartite_FalseD theI)
+  by (auto elim: the_lE intro: weights_pos)
 
 lemma max_value_matching_non_empty:
   assumes "max_value_matching M"

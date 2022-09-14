@@ -1,12 +1,10 @@
 theory Ranking_Order
   imports
     Bipartite_Matching_LP
-    "Treaps.Random_List_Permutation"
+    Order_Relations
 begin
 
 sledgehammer_params [provers = cvc4 vampire verit e spass z3 zipperposition]
-
-declare vs_member_intro[rule del]
 
 lemma split_list_distinct:
   assumes "distinct xs"
@@ -31,231 +29,6 @@ next
   qed
 qed
 
-text \<open>Weaker versions of \<^term>\<open>refl_on\<close> (and \<^term>\<open>preorder_on\<close>/\<^term>\<open>linorder_on\<close>) that don't enforce
-that the relation is only defined on the given set. Alternative would be to weaken all lemmas
-by using stronger assumptions.\<close>
-definition "refl_on' S r \<longleftrightarrow> (\<forall>x\<in>S. (x,x) \<in> r)"
-definition "preorder_on' S r \<longleftrightarrow> refl_on' S r \<and> trans r"
-definition "linorder_on' S r \<longleftrightarrow> refl_on' S r \<and> antisym r \<and> trans r \<and> total_on S r"
-
-definition "preorders_on S \<equiv> {r. preorder_on S r}"
-
-
-lemma refl_on'D: "refl_on' S r \<Longrightarrow> a \<in> S \<Longrightarrow> (a,a) \<in> r"
-  unfolding refl_on'_def
-  by blast
-
-lemma refl_on'_Restr: "refl_on' S r \<Longrightarrow> refl_on' S (Restr r S)"
-  unfolding refl_on'_def
-  by blast
-
-lemma linorder_on'_refl_on'D: "linorder_on' S r \<Longrightarrow> refl_on' S r"
-  unfolding linorder_on'_def
-  by blast
-
-lemma linorder_on'_transD: "linorder_on' S r \<Longrightarrow> trans r"
-  unfolding linorder_on'_def
-  by blast
-
-lemma linorder_on'_antisymD: "linorder_on' S r \<Longrightarrow> antisym r"
-  unfolding linorder_on'_def
-  by blast
-
-lemma preorders_onD: "r \<in> preorders_on S \<Longrightarrow> preorder_on S r"
-  unfolding preorders_on_def
-  by blast
-
-lemma preorders_onI[intro]: "preorder_on S r \<Longrightarrow> r \<in> preorders_on S"
-  unfolding preorders_on_def
-  by blast
-
-lemma preorder_on_subset_Times: "preorder_on S r \<Longrightarrow> r \<subseteq> S \<times> S"
-  unfolding preorder_on_def
-  by (auto dest: refl_onD1 refl_onD2)
-
-lemma preorders_on_subset_Pow: "preorders_on S \<subseteq> Pow (S \<times> S)"
-  by (auto dest: preorders_onD preorder_on_subset_Times)
-
-lemma finite_preorders_on[intro]:
-  assumes "finite S"
-  shows "finite (preorders_on S)"
-  using assms
-  by (auto intro: finite_subset[OF preorders_on_subset_Pow])
-
-lemma refl_on_imp_refl_on': "refl_on S r \<Longrightarrow> refl_on' S r"
-  unfolding refl_on_def refl_on'_def
-  by blast
-
-lemma linorder_on_imp_linorder_on': "linorder_on S r \<Longrightarrow> linorder_on' S r"
-  unfolding linorder_on_def linorder_on'_def
-  by (auto dest: refl_on_imp_refl_on')
-
-lemma linorder_on_imp_preorder_on: "linorder_on S r \<Longrightarrow> preorder_on S r"
-  unfolding linorder_on_def preorder_on_def
-  by blast
-
-lemma linorder_on'_imp_preorder_on': "linorder_on' S r \<Longrightarrow> preorder_on' S r"
-  unfolding linorder_on'_def preorder_on'_def
-  by blast
-
-lemma preorder_on_imp_preorder_on': "preorder_on S r \<Longrightarrow> preorder_on' S r"
-  unfolding preorder_on_def preorder_on'_def
-  by (blast intro: refl_on_imp_refl_on')
-
-lemma refl_on'_subset:
-  "refl_on' S r \<Longrightarrow> T \<subseteq> S \<Longrightarrow> refl_on' T r"
-  unfolding refl_on'_def
-  by blast
-
-lemma linorder_on'_subset:
-  "linorder_on' S r \<Longrightarrow> T \<subseteq> S \<Longrightarrow> linorder_on' T r"
-  unfolding linorder_on'_def
-  by (auto intro: refl_on'_subset total_on_subset)
-
-lemma preorder_on'_subset:
-  "preorder_on' S r \<Longrightarrow> T \<subseteq> S \<Longrightarrow> preorder_on' T r"
-  unfolding preorder_on'_def
-  by (auto intro: refl_on'_subset total_on_subset)
-
-lemma total_on_Restr:
-  "total_on S r \<Longrightarrow> total_on S (Restr r S)"
-  unfolding total_on_def
-  by blast
-
-lemma linorder_on'_Restr:
-  "linorder_on' S r \<Longrightarrow> linorder_on' S (Restr r S)"
-  unfolding linorder_on'_def
-  by (auto intro: refl_on'_Restr antisym_subset trans_Restr total_on_Restr)
-  
-definition is_min_rel :: "('a \<Rightarrow> bool) \<Rightarrow> 'a rel \<Rightarrow> 'a \<Rightarrow> bool" where
-  "is_min_rel P r x = (P x \<and> \<not>(\<exists>y. P y \<and> (y,x) \<in> r \<and> (x,y) \<notin> r))"
-
-definition min_rel :: "('a \<Rightarrow> bool) \<Rightarrow> 'a rel \<Rightarrow> 'a" where
-  "min_rel P r = (SOME x. is_min_rel P r x)"
-
-\<comment> \<open>use \<^term>\<open>Restr\<close> to make minimum deterministic in some cases\<close>
-definition min_on_rel :: "'a set \<Rightarrow> 'a rel \<Rightarrow> 'a" where
-  "min_on_rel S r = min_rel (\<lambda>x. x \<in> S) (Restr r S)"
-
-lemma ex_min_if_finite:
-  "\<lbrakk> finite S; S \<noteq> {}; preorder_on' S r \<rbrakk> \<Longrightarrow> \<exists>m\<in>S. \<not>(\<exists>x\<in>S. (x,m) \<in> Restr r S \<and> (m,x) \<notin> Restr r S)"
-proof (induction arbitrary: r rule: finite.induct)
-  case (insertI A a)
-  then show ?case
-  proof (cases "A \<noteq> {}")
-    case True
-    from insertI have "preorder_on' A r"
-      by (auto intro: preorder_on'_subset)
-
-    with True insertI obtain m where m: "m\<in>A" "\<not>(\<exists>x\<in>A. (x,m) \<in> r \<and> (m,x) \<notin> r)"
-      by blast
-
-    with \<open>preorder_on' (insert a A) r\<close> show ?thesis
-      unfolding preorder_on'_def
-      by (auto dest: transD)
-  qed simp
-qed simp
-
-lemma ex_is_min_if_finite:
-  assumes "preorder_on' S r"
-  assumes "finite S" "S \<noteq> {}"
-  shows "\<exists>x. is_min_rel (\<lambda>x. x \<in> S) (Restr r S) x"
-  using assms
-  unfolding is_min_rel_def
-  using ex_min_if_finite
-  by fast
-
-lemma min_if_finite':
-  assumes "preorder_on' S r"
-  assumes "finite S" "S \<noteq> {}"
-  shows "min_on_rel S r \<in> S" and "\<not>(\<exists>x\<in>S. (x, min_on_rel S r) \<in> Restr r S \<and> (min_on_rel S r, x) \<notin> Restr r S)"
-  using assms
-  by (metis ex_is_min_if_finite is_min_rel_def min_on_rel_def min_rel_def some_eq_ex)+
-
-lemma min_if_finite:
-  assumes "preorder_on' S r"
-  assumes "finite S" "S \<noteq> {}"
-  shows "min_on_rel S r \<in> S" and "\<not>(\<exists>x\<in>S. (x, min_on_rel S r) \<in> r \<and> (min_on_rel S r, x) \<notin> r)"
-  using assms min_if_finite' by force+
-
-lemma min_rel_linorder_eq:
-  assumes "linorder_on' {x. P x} r"
-  assumes "P a"
-  assumes "\<forall>y. P y \<longrightarrow> (a,y) \<in> r"
-  shows "min_rel P r = a"
-  unfolding min_rel_def is_min_rel_def
-  by (rule someI2[of _ a])
-     (use assms in \<open>auto simp add: antisym_def linorder_on'_def\<close>)
-
-lemma min_on_rel_linorder_eq:
-  assumes "linorder_on' S r"
-  assumes "a \<in> S"
-  assumes "\<forall>y\<in>S. (a,y) \<in> r"
-  shows "min_on_rel S r = a"
-  using assms
-  unfolding min_on_rel_def
-  by (auto intro!: min_rel_linorder_eq intro: linorder_on'_Restr)
-
-lemma min_on_rel_singleton:
-  shows "min_on_rel {a} r = a"
-  by (auto simp: min_on_rel_def min_rel_def is_min_rel_def)
-
-lemma min_on_rel_least:
-  assumes "linorder_on' S r"
-  assumes S: "finite S" "S \<noteq> {}"
-  assumes "y \<in> S"
-  shows "(min_on_rel S r, y) \<in> r"
-  using S assms
-proof (induction S arbitrary: y rule: finite_induct)
-  case (insert s S)
-
-  show ?case
-  proof (cases "S = {}")
-    case True
-    with insert.prems show ?thesis
-      by (auto simp: min_on_rel_singleton linorder_on'_def refl_on'_def)
-  next
-    case False
-    let ?min = "min_on_rel S r"
-
-    from insert.prems False have IH: "y' \<in> S \<Longrightarrow> (?min, y') \<in> r" for y'
-      by (intro insert.IH) (auto intro: linorder_on'_subset)
-
-    from False insert.prems have "?min \<in> S"
-      by (auto intro: min_if_finite linorder_on'_imp_preorder_on' dest: linorder_on'_subset)
-
-    with insert.prems
-    consider (less) "(s, ?min) \<in> r" "(?min, s) \<notin> r" | (eq) "(s, ?min) \<in> r" "(?min, s) \<in> r" | (gt) "(s, ?min) \<notin> r" "(?min, s) \<in> r"
-      unfolding total_on_def linorder_on'_def refl_on'_def
-      by force
-
-    then show ?thesis
-    proof cases
-      case less
-      with insert.prems have "min_on_rel (insert s S) r = s"
-        by (intro min_on_rel_linorder_eq)
-           (auto dest: linorder_on'_refl_on'D refl_on'D linorder_on'_transD IH transD)
-
-      with insert.prems less show ?thesis
-        by (auto dest: linorder_on'_refl_on'D refl_on'D linorder_on'_transD IH transD)
-    next
-      case eq
-      with insert.prems \<open>?min \<in> S\<close> \<open>s \<notin> S\<close> have "min_on_rel (insert s S) r = s"
-        by (auto dest!: linorder_on'_antisymD simp: antisym_def) blast+
-
-      with insert.prems eq show ?thesis
-        by (auto dest: linorder_on'_refl_on'D refl_on'D linorder_on'_transD IH transD)
-    next
-      case gt
-      with insert.prems \<open>?min \<in> S\<close> have "min_on_rel (insert s S) r = ?min"
-        by (intro min_on_rel_linorder_eq) (auto dest: IH)
-
-      with insert.prems gt show ?thesis
-        by (auto dest: IH)
-    qed
-  qed
-qed blast
-
 definition step :: "('a \<times> 'a) set \<Rightarrow> 'a graph \<Rightarrow> 'a graph \<Rightarrow> 'a \<Rightarrow> 'a graph" where
   "step r G M j = (
     let ns = {i. i \<notin> Vs M \<and> {i,j} \<in> G} in
@@ -263,6 +36,9 @@ definition step :: "('a \<times> 'a) set \<Rightarrow> 'a graph \<Rightarrow> 'a
     then let i = min_on_rel ns r in insert {i,j} M
     else M
   )"
+
+definition "ranking' r G M \<equiv> foldl (step r G) M"
+abbreviation "ranking r G \<equiv> ranking' r G {}"
 
 lemma step_cases'[case_names no_neighbor j_matched new_match]:
   assumes "{i. i \<notin> Vs M \<and> {i,j} \<in> G} = {} \<Longrightarrow> P"
@@ -328,9 +104,6 @@ proof (cases M j G rule: step_cases')
   with new_match \<open>min_on_rel ns r \<in> ns\<close> assms show ?thesis
     by blast
 qed (use assms in \<open>blast+\<close>)
-
-definition "ranking' r G M \<equiv> foldl (step r G) M"
-abbreviation "ranking r G \<equiv> ranking' r G {}"
 
 lemma ranking_Nil[simp]: "ranking' r G M [] = M"
   unfolding ranking'_def by simp
@@ -403,7 +176,7 @@ lemma ranking_mono_vs:
   assumes "v \<in> Vs M"
   shows "v \<in> Vs (ranking' r G M js)"
   using assms
-  by (meson ranking_mono vs_member)
+  by (auto simp: vs_member dest: ranking_mono)
 
 lemma edge_in_step:
   assumes "e \<in> step r G M j"
@@ -900,12 +673,11 @@ proof -
       then show ?case
       proof (cases "{i'. i' \<notin> Vs (ranking r (G \<setminus> {i}) pre) \<and> {i',j} \<in> G \<setminus> {i}} = {}")
         case True
-        with False \<open>{i,j} \<in> G\<close> have "{i. i \<notin> Vs (ranking r G pre) \<and> {i,j} \<in> G} = {i}"
-          apply (auto simp: pre_eq)
-          by (metis \<open>i \<noteq> j\<close> disjoint_insert(1) empty_iff in_remove_verticesI inf_bot_right insert_iff)
+        with False \<open>{i,j} \<in> G\<close> \<open>i \<noteq> j\<close> have "{i. i \<notin> Vs (ranking r G pre) \<and> {i,j} \<in> G} = {i}"
+          by (auto simp: pre_eq intro: in_remove_verticesI)
 
         then show ?thesis
-          by simp (intro min_on_rel_singleton[symmetric])
+          by (simp flip: min_on_rel_singleton)
       next
         case False
         show ?thesis
@@ -935,7 +707,7 @@ proof -
             case (3 y)
             with linorder \<open>j \<in> R\<close> show ?case
               by (auto simp: pre_eq 
-                       intro!: min_on_rel_least finite_unmatched_neighbors linorder_on'_subset[OF _ unmatched_neighbors_L]
+                       intro: min_on_rel_least finite_unmatched_neighbors linorder_on'_subset[OF _ unmatched_neighbors_L]
                        dest: remove_vertices_subgraph' linorder_on_imp_linorder_on')
           qed
 
@@ -983,8 +755,7 @@ proof (cases "j \<in> Vs (ranking r (G \<setminus> {i}) js)")
     by fast
 
   from G'.graph linorder \<open>j \<in> R\<close> \<open>set js = R\<close> have "matching (ranking r (G \<setminus> {i}) js)"
-    thm neighbors_right_subset_left
-    by (auto intro!: matching_ranking intro!: preorder_on'_subset[OF _ neighbors_right_subset_left]
+    by (auto intro!: matching_ranking intro: preorder_on'_subset[OF _ neighbors_right_subset_left]
              dest: linorder_on_imp_preorder_on preorder_on_imp_preorder_on' remove_vertices_subgraph')
 
   with e \<open>e = {i',j}\<close> have the_i': "(THE i'. {i',j} \<in> ranking r (G \<setminus> {i}) js) = i'"
@@ -1021,9 +792,8 @@ next
 
   let ?min = "min_on_rel {i. i \<notin> Vs M \<and> {i,j} \<in> G} r"
 
-  from new_match have min_available_if: "?min \<notin> Vs M' \<Longrightarrow> ?min \<noteq> i \<Longrightarrow> ?min \<in> {i'. i' \<notin> Vs M' \<and> {i',j} \<in> G \<setminus> {i}}"
-    apply (auto intro!: in_remove_verticesI)
-    by (metis assms(1) assms(2) bipartite_graph bipartite_vertex(1) edges_are_Vs(2))
+  from new_match \<open>i \<in> L\<close> \<open>j \<in> R\<close> have min_available_if: "?min \<notin> Vs M' \<Longrightarrow> ?min \<noteq> i \<Longrightarrow> ?min \<in> {i'. i' \<notin> Vs M' \<and> {i',j} \<in> G \<setminus> {i}}"
+    by (auto intro: in_remove_verticesI)
 
   from linorder have "preorder_on' {i'. {i', j} \<in> G \<setminus> {i}} r" "finite (Vs (G \<setminus> {i}))"
     by (auto intro: preorder_on'_subset dest: remove_vertices_subgraph' linorder_on'_imp_preorder_on')
@@ -1032,9 +802,8 @@ next
   proof (cases rule: step_cases[where M = M'])
     case no_neighbor
 
-    with min_available_if subset_before new_match show ?thesis
-      apply (auto simp add: step_def vs_insert)
-      by (meson assms(2) bipartite_graph bipartite_vertex(1) edges_are_Vs(2))
+    with min_available_if subset_before new_match \<open>j \<in> R\<close> show ?thesis
+      by (auto simp: step_def vs_insert)
   next
     case j_matched
     with \<open>j \<notin> Vs M'\<close> show ?thesis
@@ -1126,7 +895,7 @@ proof -
   and ?ranking_pre' = "ranking' r (G \<setminus> {i}) M' pre"
 
   from js_decomp assms have "L - {i} - Vs ?ranking_pre' \<subseteq> L - Vs ?ranking_pre"
-    by (intro monotonicity_order_ranking) (auto intro: linorder_on_neighborsI)
+    by (intro monotonicity_order_ranking) auto
 
   from linorder js_decomp \<open>set js \<subseteq> R\<close> \<open>j \<notin> Vs M\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
     by (intro unmatched_R_in_ranking_if)
@@ -1151,7 +920,7 @@ proof -
 
   with linorder \<open>j \<in> R\<close> have "?min \<in> ?ns"
     by (intro min_if_finite)
-       (auto dest: linorder_on_imp_preorder_on preorder_on_imp_preorder_on' intro: preorder_on_neighborsI preorder_on'_subset)
+       (auto dest: linorder_on_imp_preorder_on preorder_on_imp_preorder_on' intro: preorder_on'_subset)
     
   with j_unmatched_pre have "step r G ?ranking_pre j = insert {?min, j} ?ranking_pre"
     by (auto simp: step_def)
@@ -1160,7 +929,7 @@ proof -
     by (auto simp: ranking_append ranking_Cons intro: ranking_mono)
 
   with i'j linorder \<open>set js \<subseteq> R\<close> \<open>matching M\<close> have "i' = ?min"
-    by (auto intro: matching_partner_eqI matching_ranking preorder_on_neighborsI dest: linorder_on_imp_preorder_on)
+    by (auto intro: matching_partner_eqI matching_ranking dest: linorder_on_imp_preorder_on)
 
 
 
@@ -1188,7 +957,7 @@ proof -
   with linorder \<open>j \<in> R\<close> have "?min' \<in> ?ns'"
     by (intro min_if_finite)
        (auto dest: linorder_on_imp_preorder_on preorder_on_imp_preorder_on' remove_vertices_subgraph' 
-             intro: preorder_on_neighborsI preorder_on'_subset)
+             intro: preorder_on'_subset)
 
   with j_unmatched_pre' have "step r (G \<setminus> {i}) ?ranking_pre' j = insert {?min', j} ?ranking_pre'"
     by (auto simp: step_def)
@@ -1197,7 +966,7 @@ proof -
     by (auto simp: ranking_append ranking_Cons intro: ranking_mono)
 
   with linorder \<open>set js \<subseteq> R\<close> \<open>matching M'\<close> have "i'' = ?min'"
-    by (auto intro: matching_partner_eqI[OF _ i''j] matching_ranking preorder_on_neighborsI
+    by (auto intro: matching_partner_eqI[OF _ i''j] matching_ranking
              dest: linorder_on_imp_preorder_on remove_vertices_subgraph')
 
   from \<open>?min' \<in> ?ns'\<close> have "?min' \<in> ?ns"
@@ -1207,7 +976,7 @@ proof -
 
   with linorder \<open>?min \<in> ?ns\<close> \<open>j \<in> R\<close> have "(?min, ?min') \<in> r"
     by (intro min_on_rel_least)
-       (auto dest: linorder_on_imp_linorder_on' intro: linorder_on'_subset linorder_on_neighborsI)
+       (auto dest: linorder_on_imp_linorder_on' intro: linorder_on'_subset)
 
   with \<open>i' = ?min\<close> \<open>i'' = ?min'\<close> show "(i',i'') \<in> r"
     by simp

@@ -1,7 +1,6 @@
 theory Bipartite_Matching_LP
   imports
     More_Graph
-    Jordan_Normal_Form.Matrix
     LP_Duality.Move_To_Matrix
 begin
 
@@ -171,6 +170,12 @@ lemma
     and Vs_enum_less_n_R: "j \<in> R \<Longrightarrow> Vs_enum j < n"
   by (auto simp: parts_minimal intro: Vs_enum_less_n)
 
+lemma Vs_enum_less_card_L: "l \<in> L \<Longrightarrow> Vs_enum l < card L"
+  by (auto simp: Vs_enum_L intro: L_enum_less_card)
+
+lemma Vs_enum_geq_card_L: "r \<in> R \<Longrightarrow> card L \<le> Vs_enum r"
+  by (auto simp: Vs_enum_R)
+
 lemma
   shows Vs_inv_enum[simp]: "x \<in> Vs G \<Longrightarrow> Vs_enum_inv (Vs_enum x) = x"
     and Vs_enum_inv[simp]: "i < n \<Longrightarrow> Vs_enum (Vs_enum_inv i) = i"
@@ -194,6 +199,11 @@ lemma Vs_enum_inv_rightE:
   obtains j where "j \<in> R" "Vs_enum_inv i = j"
   using assms
   by (metis Vs_enum_inv_def add.right_neutral card.empty from_nat_into n_sum)
+
+lemma G_enum_less_m: "e \<in> G \<Longrightarrow> G_enum e < m"
+  unfolding m_def
+  using finite_E
+  by (auto intro: to_nat_on_less_card)
 
 lemma G_not_empty_if:
   assumes "i < m"
@@ -228,9 +238,8 @@ lemma primal_dot_One_card: "M \<subseteq> G \<Longrightarrow> 1\<^sub>v m \<bull
 lemma matching_feasible:
   assumes "matching M"
   shows "incidence_matrix *\<^sub>v primal_sol M \<le> 1\<^sub>v n"
-  unfolding incidence_matrix_def primal_sol_def 
-  apply (auto simp: mult_mat_vec_def scalar_prod_def less_eq_vec_def)
-proof (rule ccontr, simp add: not_le)
+  unfolding incidence_matrix_def primal_sol_def less_eq_vec_def mult_mat_vec_def scalar_prod_def
+proof (intro conjI allI impI, simp_all, rule ccontr, simp add: not_le)
   fix i
   assume "i < n"
   let ?indices = "{0..<m} \<inter> {e. from_nat_into G e \<in> M} \<inter> {e. local.Vs_enum_inv i \<in> from_nat_into G e}"
@@ -255,18 +264,15 @@ proof (rule ccontr, simp add: not_le)
   with \<open>matching M\<close> have "from_nat_into G ei1 = from_nat_into G ei2"
     by (auto dest: matching_unique_match)
 
-  with \<open>ei1 \<noteq> ei2\<close> show False  
-    by (metis IntD1 atLeastLessThan_iff ei1 ei2(1)finite_E m_def to_nat_on_from_nat_into_less)
+  with ei1 ei2 \<open>ei1 \<noteq> ei2\<close> show False
+    by (auto dest!: to_nat_on_from_nat_into_less[OF finite_E] simp: m_def)
 qed
 
 lemma feasible_matching:
   assumes "M \<subseteq> G"
   assumes "incidence_matrix *\<^sub>v primal_sol M \<le> 1\<^sub>v n"
   shows "matching M"
-  using assms
-  unfolding incidence_matrix_def primal_sol_def mult_mat_vec_def scalar_prod_def less_eq_vec_def
-  apply auto
-proof (rule ccontr)
+proof (use assms in \<open>simp add: incidence_matrix_def primal_sol_def mult_mat_vec_def scalar_prod_def less_eq_vec_def\<close>, intro ccontr[where P = "matching M"])
   assume "M \<subseteq> G"
   let ?indices = "\<lambda>i. {0..<m} \<inter> {i. from_nat_into G i \<in> M} \<inter> {x. Vs_enum_inv i \<in> from_nat_into G x}"
   assume at_most_One: "\<forall>i<n. real (card (?indices i)) \<le> 1"
@@ -279,23 +285,26 @@ proof (rule ccontr)
   then obtain v where "v \<in> e1" "v \<in> e2"
     by blast
 
-  with \<open>e1 \<in> M\<close> have v_le_n: "Vs_enum v < n"
-    by (metis L_enum_less_n R_enum_less_n Vs_cases Vs_enum_def assms(1) subset_eq vs_member_intro)
+  with \<open>M \<subseteq> G\<close> \<open>e1 \<in> M\<close> have "v \<in> Vs G"
+    by auto
 
-  have e1_in_indices: "G_enum e1 \<in> ?indices (Vs_enum v)"
-    by (smt (verit) IntI Vs_inv_enum \<open>e1 \<in> M\<close> \<open>v \<in> e1\<close> assms(1) atLeastLessThan_iff countable_finite from_nat_into_to_nat_on finite_E in_mono m_def mem_Collect_eq to_nat_on_less_card vs_member_intro zero_le)
+  then have v_le_n: "Vs_enum v < n"
+    by (auto intro: Vs_enum_less_n)
 
-  have e2_in_indices: "G_enum e2 \<in> ?indices (Vs_enum v)"
-    by (smt (verit) IntI Vs_inv_enum \<open>e2 \<in> M\<close> \<open>v \<in> e2\<close> assms(1) atLeastLessThan_iff countable_finite from_nat_into_to_nat_on finite_E in_mono m_def mem_Collect_eq to_nat_on_less_card vs_member_intro zero_le)
+  from \<open>e1 \<in> M\<close> \<open>M \<subseteq> G\<close> \<open>v \<in> Vs G\<close> \<open>v \<in> e1\<close> have e1_in_indices: "G_enum e1 \<in> ?indices (Vs_enum v)"
+    by (auto intro: G_enum_less_m simp: countable_finite[OF finite_E])
 
-  have "G_enum e1 \<noteq> G_enum e2"
-    using G_enum_neqI \<open>e1 \<in> M\<close> \<open>e1 \<noteq> e2\<close> \<open>e2 \<in> M\<close> assms(1) by blast
+  from \<open>e2 \<in> M\<close> \<open>M \<subseteq> G\<close> \<open>v \<in> Vs G\<close> \<open>v \<in> e2\<close> have e2_in_indices: "G_enum e2 \<in> ?indices (Vs_enum v)"
+    by (auto intro: G_enum_less_m simp: countable_finite[OF finite_E])
 
-  then have "0 < card (?indices (Vs_enum v) - {G_enum e2})"
-    by (metis Diff_cancel Diff_iff card_gt_0_iff e1_in_indices finite_Diff finite_Int finite_atLeastLessThan insertE)
+  from \<open>e1 \<in> M\<close> \<open>e2 \<in> M\<close> \<open>M \<subseteq> G\<close> \<open>e1 \<noteq> e2\<close> have "G_enum e1 \<noteq> G_enum e2"
+    by (intro G_enum_neqI) auto
 
-  then have "1 < card (?indices (Vs_enum v))"
-    by (metis Diff_empty card_Diff_insert e2_in_indices empty_iff zero_less_diff)
+  with e1_in_indices have "0 < card (?indices (Vs_enum v) - {G_enum e2})"
+    by (auto simp: card_gt_0_iff)
+
+  with e2_in_indices have "1 < card (?indices (Vs_enum v))"
+    by simp
 
   also from at_most_One v_le_n have "\<dots> \<le> 1"
     by auto

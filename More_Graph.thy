@@ -4,6 +4,10 @@ theory More_Graph
     Berge
     "HOL-Library.FuncSet"
 begin
+
+\<comment> \<open>Makes some proofs very slow\<close>
+declare vs_member_intro[rule del]
+
 text \<open>
   Graphs are modelled as sets of undirected edges, where each edge is a doubleton set in a
   wellformed (finite) graph (\<^term>\<open>graph_invar\<close>), i.e.\ graphs have type \<^typ>\<open>'a set set\<close>.
@@ -80,7 +84,7 @@ lemma vs_neq_graphs_neq:
 
 lemma path_Cons_hd:
   "path G vs \<Longrightarrow> hd vs = v \<Longrightarrow> {u,v} \<in> G \<Longrightarrow> path G (u#vs)"
-  by (cases vs) auto
+  by (cases vs) (auto intro: vs_member_intro)
 
 lemma symm_diff_empty[simp]:
   "G = G' \<Longrightarrow> G \<oplus> G' = {}"
@@ -201,7 +205,7 @@ lemma maximal_matching_edgeD:
   assumes "{u,v} \<in> G"
   shows "u \<in> Vs M \<or> v \<in> Vs M"
   using assms
-  by (auto elim: maximal_matching_edgeE)
+  by (auto elim: maximal_matching_edgeE intro: vs_member_intro)
 
 lemma not_maximal_matchingE:
   assumes "matching M"
@@ -317,7 +321,7 @@ lemma perfect_matching_edgeE:
   assumes "v \<in> Vs G"
   obtains e where "e \<in> M" "v \<in> e"
   using assms
-  by (auto dest: perfect_matchingD elim!: vs_member_elim)
+  by (auto dest: perfect_matchingD elim!: vs_member_elim intro: vs_member_intro)
 
 lemma perfect_matching_is_max_card_matching: 
   assumes "graph_abs G"
@@ -568,7 +572,7 @@ lemma in_remove_vertices_subsetI:
 
 lemma in_remove_vertices_vsI:
   "e \<in> G \<Longrightarrow> e \<inter> X = {} \<Longrightarrow> u \<in> e \<Longrightarrow> u \<in> Vs (G \<setminus> X)"
-  by (auto dest: in_remove_verticesI)
+  by (auto dest: in_remove_verticesI intro: vs_member_intro)
 
 lemma remove_vertices_only_vs:
   "G \<setminus> X = G \<setminus> (X \<inter> Vs G)"
@@ -684,7 +688,7 @@ next
     qed blast
 
     with \<open>u \<in> e\<close> show ?thesis
-      by blast
+      by (blast intro: vs_member_intro)
   next
     case 2
     then obtain e where "e \<in> M" "v \<in> e"
@@ -699,7 +703,7 @@ next
     qed blast
 
     with \<open>v \<in> e\<close> show ?thesis
-      by blast
+      by (blast intro: vs_member_intro)
   qed
 qed
 
@@ -711,7 +715,7 @@ proof (rule ccontr)
   assume contr: "\<not>max_card_matching (G \<setminus> X) M"
 
   from assms have "M \<subseteq> G \<setminus> X"
-    by (auto dest: max_card_matchingD intro: in_remove_verticesI)
+    by (auto dest: max_card_matchingD intro: in_remove_verticesI vs_member_intro)
 
   with assms contr obtain M' where M': "M' \<subseteq> G \<setminus> X" "matching M'" "card M' > card M"
     by (auto simp: max_card_matching_def)
@@ -755,7 +759,7 @@ lemma subgraph_vs_subset_eq:
 
 lemma subgraph_remove_some_ex:
   "\<exists>x. x \<in> Vs G \<and> x \<notin> Vs M \<Longrightarrow> M \<subseteq> G \<Longrightarrow> M \<subseteq> G \<setminus> {SOME x. x \<in> Vs G \<and> x \<notin> Vs M}"
-    by (auto intro: in_remove_verticesI dest!: someI_ex)
+    by (auto intro: in_remove_verticesI vs_member_intro dest!: someI_ex)
 
 lemma max_card_matching_make_perfect_matching:
   assumes "matching M" "M \<subseteq> G" "graph_abs G" "finite G"
