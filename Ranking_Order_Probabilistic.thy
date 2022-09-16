@@ -131,10 +131,8 @@ proof -
     with bipartite_graph have the_l: "(THE l. l \<in> L \<and> l \<in> e) = l"
       by (auto dest: bipartite_subgraph[OF _ \<open>M \<subseteq> G\<close>] bipartite_disjointD)
 
-    from eM e \<open>matching M\<close> have the_e: "(THE e. e \<in> M \<and> l \<in> e) = e"
-      apply (intro the_equality)
-       apply simp
-      by (meson insertCI matching_unique_match)
+    from eM \<open>e = {l,r}\<close> \<open>matching M\<close> have the_e: "(THE e. e \<in> M \<and> l \<in> e) = e"
+      by (intro the_equality matching_unique_match) auto
 
     from parts_minimal \<open>l \<in> L\<close> have "l \<in> Vs G"
       by blast
@@ -142,10 +140,11 @@ proof -
     then show "(THE e'. e' \<in> M \<and> Vs_enum_inv (Vs_enum (THE l. l \<in> L \<and> l \<in> e)) \<in> e') = e"
       by (simp add: the_l Vs_inv_enum the_e)
 
-    from eM \<open>l \<in> L\<close> show "Vs_enum (THE l. l \<in> L \<and> l \<in> e) \<in> {0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> {i. i < card L}"
-      apply (auto simp: the_l  intro: Vs_enum_less_n_L dest: edges_are_Vs)
-       apply (simp add: e(1) edges_are_Vs(1))
-      using L_enum_less_card Vs_enum_L by presburger
+    from eM e have "l \<in> Vs M"
+      by (auto dest: edges_are_Vs)
+
+    with eM \<open>l \<in> L\<close> show "Vs_enum (THE l. l \<in> L \<and> l \<in> e) \<in> {0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> {i. i < card L}"
+      by (auto simp: the_l intro: Vs_enum_less_n_L Vs_enum_less_card_L)
   qed
 
   have R_sum_matching: "(\<Sum>i\<in>{0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> - {i. i < card L}. (1 - g (Y (THE l. {l, Vs_enum_inv i} \<in> M))) / F) =
@@ -180,10 +179,8 @@ proof -
       by (intro the_equality)
          (auto dest: bipartite_subgraph[OF _ \<open>M \<subseteq> G\<close>] bipartite_disjointD)
 
-    from e e' \<open>matching M\<close> have the_l': "(THE l. {l, local.Vs_enum_inv i} \<in> M) = l"
-      apply (intro the_equality)
-      using Vs_cases \<open>local.Vs_enum_inv i \<in> R\<close> assms(1) empty_iff apply blast
-      by (metis (no_types, lifting) Vs_cases \<open>local.Vs_enum_inv i \<in> R\<close> assms(1) edges_are_Vs(1) insertE singleton_iff subset_eq the_match)
+    from e e' \<open>matching M\<close> \<open>Vs_enum_inv i \<in> R\<close> have the_l': "(THE l. {l, Vs_enum_inv i} \<in> M) = l"
+      by (auto intro: the_match)
 
     show "(1 - g (Y (THE l. l \<in> L \<and> l \<in> (THE e. e \<in> M \<and> Vs_enum_inv i \<in> e)))) / F = (1 - g (Y (THE l. {l, Vs_enum_inv i} \<in> M))) / F"
       by (simp add: the_e the_l the_l')
@@ -202,18 +199,14 @@ proof -
       by (intro the_equality matching_unique_match)
          auto
 
-    from \<open>r \<in> R\<close> have r_inv_enum: "Vs_enum_inv (Vs_enum r) = r"
-      by simp
-
-    then show "(THE e'. e' \<in> M \<and> Vs_enum_inv (Vs_enum (THE r. r \<in> R \<and> r \<in> e)) \<in> e') = e"
+    from \<open>r \<in> R\<close> show "(THE e'. e' \<in> M \<and> Vs_enum_inv (Vs_enum (THE r. r \<in> R \<and> r \<in> e)) \<in> e') = e"
       by (simp add: the_r the_e)
 
-    show "Vs_enum (THE r. r \<in> R \<and> r \<in> e) \<in> {0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> - {i. i < card L}"
-      apply (simp add: the_r r_inv_enum)
-      apply (intro conjI)
-      using L_enum_less_n R_enum_less_n Vs_enum_def e(3) apply presburger
-       apply (metis e(1) eM edges_are_Vs(2))
-      by (metis Vs_enum_inv_leftE bipartite_FalseD e(3) r_inv_enum)
+    from eM e have "r \<in> Vs M"
+      by (auto dest: edges_are_Vs)
+
+    with \<open>r \<in> R\<close> show "Vs_enum (THE r. r \<in> R \<and> r \<in> e) \<in> {0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> - {i. i < card L}"
+      by (auto simp: the_r intro: Vs_enum_less_n_R dest: Vs_enum_geq_card_L)
   qed
 
   with graph L_sum_matching show ?thesis
@@ -308,8 +301,7 @@ proof -
     by (intro ranking_subgraph) (auto dest: remove_vertices_subgraph')
 
   with the_i' show "(THE i'. {i',j} \<in> ?M) \<in> L - {i}"
-    apply (auto)
-    by (meson edges_are_Vs(1) remove_vertices_not_vs singletonI subsetD)
+    by (auto dest!: subsetD edges_are_Vs(1)[of i j] intro: remove_vertices_not_vs'[where X = "{i}"])
 qed
 
 lemma y\<^sub>c_bounded: 
@@ -742,11 +734,11 @@ proof (rule measurableI, goal_cases)
 qed simp
 
 lemma measurable_dual_component_remove_vertices[measurable]:
-  assumes "i < n"
-  assumes "i < card L \<Longrightarrow> from_nat_into L i \<notin> X"
-  shows "(\<lambda>Y. dual_sol Y (ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>) $ i) \<in> borel_measurable (\<Pi>\<^sub>M i \<in> L - X. U)"
+  assumes "k < n"
+  assumes "k < card L \<Longrightarrow> from_nat_into L k \<notin> X"
+  shows "(\<lambda>Y. dual_sol Y (ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>) $ k) \<in> borel_measurable (\<Pi>\<^sub>M i \<in> L - X. U)"
   unfolding dual_sol_def
-proof (subst index_vec[OF \<open>i < n\<close>], subst measurable_If_restrict_space_iff, goal_cases)
+proof (subst index_vec[OF \<open>k < n\<close>], subst measurable_If_restrict_space_iff, goal_cases)
   case 2
   then show ?case
   proof (rule conjI, subst measurable_If_restrict_space_iff; (intro conjI | simp), goal_cases)
@@ -755,14 +747,14 @@ proof (subst index_vec[OF \<open>i < n\<close>], subst measurable_If_restrict_sp
     proof (auto, rule measurable_restrict_space1, goal_cases)
       case 1
       show ?case
-        by measurable (use \<open>i < card L\<close> assms in \<open>auto intro: from_nat_into simp: Vs_enum_inv_from_nat_into_L\<close>)
+        by measurable (use \<open>k < card L\<close> assms in \<open>auto intro: from_nat_into simp: Vs_enum_inv_from_nat_into_L\<close>)
     qed
   next
     case 2
     show ?case
-      apply (auto)
-      apply (intro borel_measurable_divide borel_measurable_diff borel_measurable_const, rule measurable_compose[OF dual_component_online_borel_measurable])
-      using \<open>i < n\<close> by (auto elim: Vs_enum_inv_rightE)      
+      by (simp, intro impI borel_measurable_divide borel_measurable_const borel_measurable_diff
+          measurable_compose[OF dual_component_online_borel_measurable])
+         (use \<open>k < n\<close> in \<open>auto elim: Vs_enum_inv_rightE\<close>)
   qed
 qed measurable
 
@@ -869,39 +861,35 @@ lemma funcset_update:
 
 lemma AE_add_dim_in_range:
   "AE (y,Y) in (U \<Otimes>\<^sub>M Pi\<^sub>M (L - {i}) (\<lambda>i. U)). y \<in> {0..1}"
-  apply (subst pair_sigma_finite.AE_pair_measure_swap)
-    apply (auto simp: case_prod_beta intro!: pair_sigma_finite.AE_pair_measure AE_uniform_measureI)
-     apply measurable
-   apply (metis (no_types, lifting) sets.top sets_PiM_cong sets_lborel sets_pair_measure_cong sets_uniform_measure)
-  apply measurable
-  apply (metis (no_types, lifting) sets.top sets_PiM_cong sets_lborel sets_pair_measure_cong sets_uniform_measure)
-  done
+  by (subst pair_sigma_finite.AE_pair_measure_swap)
+     (auto simp: case_prod_beta space_pair_measure intro!: pair_sigma_finite.AE_pair_measure AE_uniform_measureI)
 
 lemma AE_add_dim_funcset:
   "AE (y,Y) in (U \<Otimes>\<^sub>M Pi\<^sub>M (L - {i}) (\<lambda>i. U)). Y \<in> L - {i} \<rightarrow> {0..1}"
   using finite_L
-  apply (auto intro!: pair_sigma_finite.AE_pair_measure AE_PiM_subset_L_U_funcset simp: case_prod_beta)
-   apply measurable
-   apply (metis (no_types, lifting) sets.top sets_PiM_cong sets_lborel sets_pair_measure_cong sets_uniform_measure)
-  done
+  by (auto intro!: pair_sigma_finite.AE_pair_measure AE_PiM_subset_L_U_funcset simp: case_prod_beta space_pair_measure)
 
 lemma AE_split_dim_funcset:
   shows "AE (y, Y) in U \<Otimes>\<^sub>M Pi\<^sub>M (L - {i}) (\<lambda>i. U). Y(i := y) \<in> L \<rightarrow> {0..1}"
   using AE_add_dim_in_range AE_add_dim_funcset
-  by (auto simp: case_prod_beta intro!: eventually_mono[OF _ funcset_update, where P = "\<lambda>(y,Y). y \<in> {0..1} \<and> Y \<in> L - {i} \<rightarrow> {0..1}"])
+  by eventually_elim auto
 
 lemma AE_U_funcset:
   "i \<in> L \<Longrightarrow> Y \<in> L - {i} \<rightarrow> {0..1} \<Longrightarrow> AE y in U. Y(i:=y) \<in> L \<rightarrow> {0..1}"
-  by (auto intro!: eventually_mono[OF AE_U_in_range] funcset_update)
+  using AE_U_in_range
+  by eventually_elim auto
 
 lemma AE_dual_sol_funcset:
   shows "AE Y in \<Pi>\<^sub>M i \<in> L - X. U. ($) (dual_sol Y (ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>)) \<in> {..<n} \<rightarrow> {0..1/F}" 
-  by (rule eventually_mono[OF AE_PiM_subset_L_U_funcset dual_sol_funcset_if_funcset]) blast+
+  using AE_PiM_subset_L_U_funcset[OF Diff_subset]
+  by eventually_elim
+     (auto dest: dual_sol_funcset_if_funcset)
 
 lemma AE_dual_sol_split_dim_funcset:
   shows "AE (y, Y) in U \<Otimes>\<^sub>M Pi\<^sub>M (L - {i}) (\<lambda>i. U). ($) (dual_sol (Y(i:=y)) (ranking (linorder_from_keys L (Y(i:=y))) G \<pi>)) \<in> {..<n} \<rightarrow> {0..1/F}"
-  using eventually_mono[OF AE_split_dim_funcset dual_sol_funcset_if_funcset[where X = "{}"]]
-  by (auto simp: case_prod_beta)
+  using AE_split_dim_funcset
+  by eventually_elim
+     (auto dest: dual_sol_funcset_if_funcset[where X = "{}", simplified])
 
 lemma AE_dual_sol_U_funcset:
   assumes "Y \<in> L - {i} \<rightarrow> {0..1}"
@@ -1362,6 +1350,14 @@ proof (intro conjI allI impI, simp_all add: incidence_matrix_def)
   with bipartite_graph have index_neq: "Vs_enum i \<noteq> Vs_enum j"
     by (intro Vs_enum_neqI) (auto dest: edges_are_Vs)
 
+  {
+    fix l r
+    assume "from_nat_into G k = {l,r}" "l \<in> L" "r \<in> R"
+
+    with ij have "l = i" "r = j"
+      by auto
+  } note the_lr = this
+
   from ij have "1 \<le> expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ Vs_enum i) +
             expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ Vs_enum j)"
     by (intro dual_expectation_feasible_edge)
@@ -1369,10 +1365,9 @@ proof (intro conjI allI impI, simp_all add: incidence_matrix_def)
   also from index_neq have "\<dots> = (\<Sum>k\<in>{Vs_enum i, Vs_enum j}. expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ k))"
     by simp
 
-  also from \<open>{i,j} \<in> G\<close> \<open>k < m\<close> have "\<dots> = vec n (\<lambda>i. of_bool (Vs_enum_inv i \<in> from_nat_into G k)) \<bullet> vec n (\<lambda>i. expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i))"
+  also from the_lr \<open>{i,j} \<in> G\<close> \<open>k < m\<close> have "\<dots> = vec n (\<lambda>i. of_bool (Vs_enum_inv i \<in> from_nat_into G k)) \<bullet> vec n (\<lambda>i. expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i))"
     unfolding incidence_matrix_def
-    apply (auto simp: scalar_prod_def sum.cong[OF index_set_Int_is_doubleton] elim!: from_nat_into_G_E)
-    by (smt (verit, best) doubleton_eq_iff ij(2))
+    by (auto simp: scalar_prod_def sum.cong[OF index_set_Int_is_doubleton] elim!: from_nat_into_G_E)
 
   finally show "1 \<le> vec n (\<lambda>i. of_bool (Vs_enum_inv i \<in> from_nat_into G k)) \<bullet> vec n (\<lambda>i. expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i))"
     .

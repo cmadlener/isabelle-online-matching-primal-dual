@@ -210,17 +210,14 @@ proof -
       by (intro the_equality matching_unique_match)
          auto
 
-    from \<open>r \<in> R\<close> have r_inv_enum: "Vs_enum_inv (Vs_enum r) = r"
-      by simp
-
-    then show "(THE e'. e' \<in> M \<and> Vs_enum_inv (Vs_enum (THE r. r \<in> R \<and> r \<in> e)) \<in> e') = e"
+    from \<open>r \<in> R\<close> show "(THE e'. e' \<in> M \<and> Vs_enum_inv (Vs_enum (THE r. r \<in> R \<and> r \<in> e)) \<in> e') = e"
       by (simp add: the_r the_e)
 
     from eM e have "r \<in> Vs M"
       by (auto dest: edges_are_Vs)
 
     with \<open>r \<in> R\<close> show "Vs_enum (THE r. r \<in> R \<and> r \<in> e) \<in> {0..<n} \<inter> {i. Vs_enum_inv i \<in> Vs M} \<inter> - {i. i < card L}"
-      by (auto simp: the_r r_inv_enum intro: Vs_enum_less_n_R dest: Vs_enum_geq_card_L)
+      by (auto simp: the_r intro: Vs_enum_less_n_R dest: Vs_enum_geq_card_L)
   qed
 
   with graph L_sum_matching show ?thesis
@@ -848,7 +845,7 @@ proof (subst index_vec[OF \<open>k < n\<close>], subst measurable_If_restrict_sp
   next
     case 2
     show ?case
-      by (simp, intro impI borel_measurable_divide  borel_measurable_const dual_component_online_borel_measurable)
+      by (simp, intro impI borel_measurable_divide borel_measurable_const dual_component_online_borel_measurable)
          (use \<open>k < n\<close> in \<open>auto elim: Vs_enum_inv_rightE\<close>)
   qed
 qed measurable
@@ -982,7 +979,8 @@ lemma AE_split_dim_funcset:
 
 lemma AE_U_funcset:
   "i \<in> L \<Longrightarrow> Y \<in> L - {i} \<rightarrow> {0..1} \<Longrightarrow> AE y in U. Y(i:=y) \<in> L \<rightarrow> {0..1}"
-  by (auto intro!: eventually_mono[OF AE_U_in_range] funcset_update)
+  using AE_U_in_range
+  by eventually_elim auto
 
 lemma AE_dual_sol_funcset:
   shows "AE Y in \<Pi>\<^sub>M i \<in> L - X. U. ($) (dual_sol Y (ranking (weighted_linorder_from_keys (L - X) v g Y) (G \<setminus> X) \<pi>)) \<in> {..<n} \<rightarrow> {0..max_weight/F}" 
@@ -1646,7 +1644,7 @@ proof (intro conjI allI impI, simp_all add: incidence_matrix_def)
     fix l r
     assume "from_nat_into G k = {l,r}" "l \<in> L" "r \<in> R"
 
-    with  ij have "l = i" "r = j"
+    with ij have "l = i" "r = j"
       by auto
   } note the_lr = this
 
