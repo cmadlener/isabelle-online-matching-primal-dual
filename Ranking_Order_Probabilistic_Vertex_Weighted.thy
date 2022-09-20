@@ -584,15 +584,8 @@ lemma ranking_measurable_fun_upd:
   assumes "set js \<subseteq> R"
   assumes "Y \<in> space (Pi\<^sub>M (L - {i}) (\<lambda>_. U))"
   shows "(\<lambda>y. ranking (weighted_linorder_from_keys L v g (Y(i:=y))) G js) \<in> U \<rightarrow>\<^sub>M count_space {M. M \<subseteq> G}"
-proof (rule measurable_compose[of "\<lambda>y. weighted_linorder_from_keys L v g (Y(i:=y))" _ "count_space (preorders_on L)"], goal_cases)
-  case 1
-  from finite_L assms show ?case
-    by (measurable, simp add: space_PiM)
-next
-  case 2
-  with \<open>set js \<subseteq> R\<close> show ?case
-    by (auto dest: preorders_onD ranking_subgraph[OF subset_refl])
-qed
+  by (rule measurable_compose[OF measurable_fun_upd[where I = L and J = "L - {i}" and M = "\<lambda>_. U"]])
+     (use assms in \<open>auto intro: ranking_measurable\<close>)
 
 lemma in_vertices_borel_measurable_count_space:
   "(\<lambda>M. i \<in> Vs M) \<in> borel_measurable (count_space {M. M \<subseteq> G})"
@@ -854,8 +847,8 @@ lemmas measurable_dual_component = measurable_dual_component_remove_vertices[whe
 
 lemma measurable_dual_component_split_dim:
   assumes "i \<in> L"
-  assumes "j < n"
-  shows "(\<lambda>(y,Y). dual_sol (Y(i := y)) (ranking (weighted_linorder_from_keys L v g (Y(i := y))) G \<pi>) $ j) \<in> borel_measurable (U \<Otimes>\<^sub>M (\<Pi>\<^sub>M i \<in> L - {i}. U))"
+  assumes "k < n"
+  shows "(\<lambda>(y,Y). dual_sol (Y(i := y)) (ranking (weighted_linorder_from_keys L v g (Y(i := y))) G \<pi>) $ k) \<in> borel_measurable (U \<Otimes>\<^sub>M (\<Pi>\<^sub>M i \<in> L - {i}. U))"
   using measurable_compose[OF measurable_add_dim' measurable_dual_component] assms
   by (auto simp: case_prod_beta)
 
@@ -1113,7 +1106,7 @@ next
 
   then show ?case
     by (simp add: order_le_less_trans)
-qed (use \<open>j \<in> R\<close> in \<open>simp_all add: emeasure_space_PiM_U\<close>)
+qed (use \<open>j \<in> R\<close> in simp_all)
 
 lemma weighted_eq_iff_priority_ln:
   assumes "i \<in> L" "i' \<in> L"

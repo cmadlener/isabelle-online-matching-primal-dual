@@ -340,7 +340,7 @@ lemma ranking_subgraph:
   shows "ranking r H js \<subseteq> H"
   using assms graph
   by (intro ranking_subgraph)
-     (auto intro: preorder_on_neighborsI ranking_subgraph finite_vs_subgraph)
+     (auto intro: ranking_subgraph finite_vs_subgraph)
 
 lemma ranking_subgraph':
   assumes "H \<subseteq> G"
@@ -500,10 +500,6 @@ proof -
   with \<open>{i',j} \<in> ranking r (G \<setminus> {i}) js\<close> \<open>j \<in> R\<close> have \<open>i' \<in> L\<close>
     by (auto dest: bipartite_edgeD)
 
-  have "bipartite (ranking r (G \<setminus> {i}) pre) L R"
-    by (intro bipartite_subgraph[OF bipartite_js])
-       (auto simp: js_split ranking_append intro: ranking_mono)
-
   from preorder_neighbors have "matching (ranking r (G \<setminus> {i}) js)"
     by (auto intro!: matching_ranking)
 
@@ -563,7 +559,6 @@ proof -
                dest: edges_are_Vs remove_vertices_subgraph'
                simp: ranking_pre_eq)
 
-
     from i'_unmatched_pre \<open>{i',j} \<in> G \<setminus> {i}\<close> have "i' \<in> ?ns'"
       by auto
 
@@ -595,7 +590,7 @@ proof -
                  dest: linorder_on_imp_linorder_on')
     next
       case 2
-      from \<open>i \<notin> Vs (ranking r G pre)\<close> \<open>{i,j} \<in> G\<close> show ?case
+      from * show ?case
         by blast
     next
       case (3 y)
@@ -654,7 +649,6 @@ proof -
       by (auto simp: ranking_append dest: ranking_mono_vs)
   next
     case False
-    note i_not_pre = this
 
     with assms js_split have pre_eq: "ranking r (G \<setminus> {i}) pre = ranking r G pre"
       by (intro ranking_remove_unmatched_eq) auto
@@ -670,49 +664,15 @@ proof -
         by (simp add: pre_eq)
     next
       case 3
-      then show ?case
-      proof (cases "{i'. i' \<notin> Vs (ranking r (G \<setminus> {i}) pre) \<and> {i',j} \<in> G \<setminus> {i}} = {}")
-        case True
-        with False \<open>{i,j} \<in> G\<close> \<open>i \<noteq> j\<close> have "{i. i \<notin> Vs (ranking r G pre) \<and> {i,j} \<in> G} = {i}"
-          by (auto simp: pre_eq intro: in_remove_verticesI)
+      have "{i'. i' \<notin> Vs (ranking r (G \<setminus> {i}) pre) \<and> {i',j} \<in> G \<setminus> {i}} = {}"
+      proof (rule ccontr)
+        let ?ns' = "{i'. i' \<notin> Vs (ranking r (G \<setminus> {i}) pre) \<and> {i',j} \<in> G \<setminus> {i}}"
+        assume "?ns' \<noteq> {}"
 
-        then show ?thesis
-          by (simp flip: min_on_rel_singleton)
-      next
-        case False
-        show ?thesis
-        proof (rule ccontr)
-          let ?ns = "{i. i \<notin> Vs (ranking r G pre) \<and> {i,j} \<in> G}"
-          and ?ns' = "{i'. i' \<notin> Vs (ranking r (G \<setminus> {i}) pre) \<and> {i',j} \<in> G \<setminus> {i}}"
-          let ?i' = "min_on_rel ?ns r"
+        with j_not_pre have "step r (G \<setminus> {i}) (ranking r (G \<setminus> {i}) pre) j =
+          insert {min_on_rel ?ns' r, j} (ranking r (G \<setminus> {i}) pre)"
+          by (auto simp: step_def)
 
-          assume "i \<noteq> ?i'"
-
-          from linorder i_not_pre \<open>{i,j} \<in> G\<close> \<open>j \<in> R\<close> have "?i' \<in> ?ns"
-            by (intro min_if_finite)
-               (auto intro: preorder_on'_subset[OF _ unmatched_neighbors_L]
-                     dest: linorder_on_imp_preorder_on preorder_on_imp_preorder_on')
-
-          have arg_min': "min_on_rel ?ns' r = ?i'"
-          proof (intro min_on_rel_linorder_eq ballI, goal_cases)
-            case 1
-            from linorder \<open>j \<in> R\<close> show ?case
-              by (auto intro: linorder_on'_subset[OF _ unmatched_neighbors_L]
-                  dest: linorder_on_imp_linorder_on' remove_vertices_subgraph')
-          next
-            case 2
-            from \<open>?i' \<in> ?ns\<close> \<open>i \<noteq> ?i'\<close> \<open>i \<noteq> j\<close> show ?case
-              by (auto simp: pre_eq intro: in_remove_verticesI)
-          next
-            case (3 y)
-            with linorder \<open>j \<in> R\<close> show ?case
-              by (auto simp: pre_eq 
-                       intro: min_on_rel_least finite_unmatched_neighbors linorder_on'_subset[OF _ unmatched_neighbors_L]
-                       dest: remove_vertices_subgraph' linorder_on_imp_linorder_on')
-          qed
-
-        with False j_not_pre have "step r (G \<setminus> {i}) (ranking r (G \<setminus> {i}) pre) j = insert {?i',j} (ranking r (G \<setminus> {i}) pre)"
-          by (intro step_insertI) auto
 
         with js_split have "j \<in> Vs (ranking r (G \<setminus> {i}) js)"
           by (auto simp: ranking_append ranking_Cons vs_insert intro: ranking_mono_vs)
@@ -720,11 +680,17 @@ proof -
         with \<open>j \<notin> Vs (ranking r (G \<setminus> {i}) js)\<close> show False
           by blast
       qed
-    qed
-  qed
 
-  with js_split show ?thesis
-    by (auto simp: ranking_append ranking_Cons vs_insert intro: ranking_mono_vs)
+      with False \<open>{i,j} \<in> G\<close> \<open>i \<noteq> j\<close> have "{i. i \<notin> Vs (ranking r G pre) \<and> {i,j} \<in> G} = {i}"
+        by (auto simp: pre_eq intro: in_remove_verticesI)
+
+
+      then show ?case
+        by (simp flip: min_on_rel_singleton)
+    qed
+
+    with js_split show ?thesis
+      by (auto simp: ranking_append ranking_Cons vs_insert intro: ranking_mono_vs)
   qed
 qed
 

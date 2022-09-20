@@ -446,13 +446,13 @@ next
     with \<open>j \<in> R\<close> have "(THE l. {l, j} \<in> ranking (linorder_from_keys L Y) G \<pi>) \<in> L"
       by (intro the_ranking_match_left) auto
 
-    with True j_unmatched' index_j F_gt_0 \<open>{i,j} \<in> G\<close> \<open>Y \<in> L \<rightarrow> {0..1}\<close>show ?thesis
+    with True j_unmatched' index_j F_gt_0 \<open>{i,j} \<in> G\<close> \<open>Y \<in> L \<rightarrow> {0..1}\<close> show ?thesis
       unfolding y\<^sub>c_def dual_sol_def
       by (auto simp: g_One dest!: edges_are_Vs intro: divide_nonneg_pos intro!: g_less_eq_OneI)
   next
     case False
     
-    with j_unmatched' index_j F_gt_0 \<open>{i,j} \<in> G\<close>show ?thesis
+    with j_unmatched' index_j F_gt_0 \<open>{i,j} \<in> G\<close> show ?thesis
       unfolding y\<^sub>c_def dual_sol_def
       by (auto simp: g_One dest: edges_are_Vs intro: divide_nonneg_pos)
   qed
@@ -497,15 +497,8 @@ lemma ranking_measurable_fun_upd:
   assumes "set js \<subseteq> R"
   assumes "Y \<in> space (Pi\<^sub>M (L - {i}) (\<lambda>_. U))"
   shows "(\<lambda>y. ranking (linorder_from_keys L (Y(i:=y))) G js) \<in> U \<rightarrow>\<^sub>M count_space {M. M \<subseteq> G}"
-proof (rule measurable_compose[of "\<lambda>y. linorder_from_keys L (Y(i:=y))" _ "count_space (preorders_on L)"], goal_cases)
-  case 1
-  from finite_L assms show ?case
-    by (measurable, simp add: space_PiM)
-next
-  case 2
-  with \<open>set js \<subseteq> R\<close> show ?case
-    by (auto dest: preorders_onD ranking_subgraph[OF subset_refl])
-qed
+  by (rule measurable_compose[OF measurable_fun_upd[where I = L and J = "L - {i}" and M = "\<lambda>_.U"]])
+     (use assms finite_L in \<open>auto intro: ranking_measurable\<close>)
 
 lemma in_vertices_borel_measurable_count_space:
   "(\<lambda>M. i \<in> Vs M) \<in> borel_measurable (count_space {M. M \<subseteq> G})"
@@ -702,9 +695,11 @@ proof -
       by measurable
   next
     case (3 i)
+    with \<open>j \<in> R\<close> have "i \<in> L - X"
+      by (auto dest: neighbors_right_subset_left_remove_vertices)
+
     with \<open>A \<in> sets borel\<close> show ?case
       by measurable
-         (use 3 \<open>j \<in> R\<close> in \<open>auto dest: neighbors_right_subset_left_remove_vertices\<close>)
   next
     case (5 i i')
     with set_pre show ?case
@@ -1309,8 +1304,7 @@ proof -
   proof (subst div_F_less_eq_cancel, intro integral_mono_AE, goal_cases)
     case 1
     show ?case
-      by (rule integrableI_real_bounded)
-         (use F_gt_0 in \<open>auto simp: emeasure_space_PiM_U\<close>)
+      by (auto intro: finite_measure.integrable_const prob_space.finite_measure prob_space_PiM_U)
   next
     case 2
     from \<open>j \<in> R\<close> show ?case
