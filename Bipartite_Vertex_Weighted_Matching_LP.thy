@@ -7,7 +7,7 @@ locale bipartite_vertex_weighted_matching_lp = bipartite_matching_lp +
   assumes weights_pos: "i \<in> L \<Longrightarrow> 0 < v i"
 begin
 
-abbreviation "matching_value M \<equiv> (\<Sum>e\<in>M. v (THE l. l \<in> L \<and> l \<in> e))"
+abbreviation "matching_value M \<equiv> \<Sum>e\<in>M. v (THE l. l \<in> L \<and> l \<in> e)"
 
 definition "max_value_matching M \<longleftrightarrow> M \<subseteq> G \<and> matching M \<and>
   (\<forall>M'. M' \<subseteq> G \<and> matching M \<longrightarrow> matching_value M' \<le> matching_value M)"
@@ -84,7 +84,7 @@ lemma primal_dot_coeffs_eq_value:
   unfolding scalar_prod_def primal_sol_def
   using assms
   by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = "to_nat_on G"]
-           intro: to_nat_on_from_nat_into_less from_nat_into_to_nat_on simp: m_def to_nat_on_less_card countable_finite)
+           intro: to_nat_on_from_nat_into_less simp: m_def to_nat_on_less_card countable_finite)
 
 lemma matching_value_bound_by_feasible_dual:
   fixes y :: "real vec"

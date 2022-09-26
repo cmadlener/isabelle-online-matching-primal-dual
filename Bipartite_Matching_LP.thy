@@ -286,7 +286,7 @@ proof (use assms in \<open>simp add: incidence_matrix_def primal_sol_def mult_ma
     by blast
 
   with \<open>M \<subseteq> G\<close> \<open>e1 \<in> M\<close> have "v \<in> Vs G"
-    by auto
+    by (auto intro: vs_member_intro)
 
   then have v_le_n: "Vs_enum v < n"
     by (auto intro: Vs_enum_less_n)

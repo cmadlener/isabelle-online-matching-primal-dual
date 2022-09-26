@@ -868,4 +868,22 @@ next
     by (simp only: the_e, intro the_equality)
        (auto dest: bipartite_disjointD)
 qed
+
+subsubsection \<open>One-sided Matchings\<close>
+definition one_sided_matching :: "'a graph \<Rightarrow> 'a graph \<Rightarrow> 'a set \<Rightarrow> bool" where
+  "one_sided_matching G M A \<equiv> M \<subseteq> G \<and> (\<forall>a\<in>A. card {e\<in>M. a \<in> e} \<le> 1)"
+
+lemma one_sided_matchingI:
+  assumes "M \<subseteq> G"
+  assumes "\<And>a. a \<in> A \<Longrightarrow> card {e\<in>M. a \<in> e} \<le> 1"
+  shows "one_sided_matching G M A"
+  unfolding one_sided_matching_def
+  using assms
+  by blast
+
+lemma one_sided_matching_subgraphD: "one_sided_matching G M A \<Longrightarrow> M \<subseteq> G"
+  unfolding one_sided_matching_def by blast
+
+lemma one_sided_matching_subgraphD': "one_sided_matching G M A \<Longrightarrow> e \<in> M \<Longrightarrow> e \<in> G"
+  by (auto dest: one_sided_matching_subgraphD)
 end
