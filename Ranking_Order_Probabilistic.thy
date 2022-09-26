@@ -891,6 +891,21 @@ lemma AE_dual_sol_U_funcset:
   shows "AE y in U. ($) (dual_sol (Y(i:=y)) (ranking (linorder_from_keys L (Y(i:=y))) G \<pi>)) \<in> {..<n} \<rightarrow> {0..1/F}"
   using assms
   by (intro eventually_mono[OF AE_U_in_range] dual_sol_funcset_if_funcset[where X = "{}", simplified] funcset_update)
+
+
+lemma integrable_g[simp]: "integrable U g"
+proof (intro integrableI_real_bounded, goal_cases)
+  case 2
+  from AE_U_in_range show ?case
+    by eventually_elim
+       (auto intro: g_nonnegI)
+  case 3
+  have "\<integral>\<^sup>+ y. g y \<partial>U \<le> 1"
+    by (intro component_prob_space.nn_integral_le_const eventually_mono[OF AE_U_in_range])
+       (auto intro: g_less_eq_OneI)
+  then show ?case
+    by (simp add: order_le_less_trans)
+qed simp
   
 lemma integrable_dual_component_remove_vertices:
   assumes "i < n"
@@ -1099,48 +1114,8 @@ proof -
   proof (subst pair_sigma_finite.integral_snd, goal_cases)
     case 2
     then show ?case
-    proof (rule integrableI_real_bounded, goal_cases)
-      case 1
-      from \<open>i \<in> L\<close> \<open>Vs_enum i < n\<close> \<open>Vs_enum j < n\<close> show ?case
-        using measurable_dual_component_split_dim
-        by measurable
-    next
-      case 2
-      then show ?case
-        by (rule eventually_mono[OF AE_dual_sol_split_dim_funcset])
-           (use \<open>Vs_enum i < n\<close> \<open>Vs_enum j < n\<close> in \<open>auto intro!: add_nonneg_nonneg\<close>)
-    next
-      case 3
-
-      interpret split_dim_prob_space: prob_space "(U \<Otimes>\<^sub>M (\<Pi>\<^sub>M i \<in> L - {i}. U))"
-        by (intro prob_space_pair prob_space_PiM) blast+
-
-      have "(\<integral>\<^sup>+ (y,Y). (dual_sol (Y(i:=y)) (ranking (linorder_from_keys L (Y(i:=y))) G \<pi>) $ Vs_enum i) +
-        (dual_sol (Y(i:=y)) (ranking (linorder_from_keys L (Y(i:=y))) G \<pi>) $ (Vs_enum j)) \<partial>U \<Otimes>\<^sub>M (\<Pi>\<^sub>M i \<in> L - {i}. U)) \<le>
-          (\<integral>\<^sup>+ _. 1/F + 1/F \<partial>U \<Otimes>\<^sub>M (\<Pi>\<^sub>M i \<in> L - {i}. U))"
-      proof (rule nn_integral_mono_AE, rule eventually_mono[OF AE_dual_sol_split_dim_funcset], simp add: case_prod_beta)
-        fix yY :: "real \<times> ('a \<Rightarrow> real)"
-        let ?y = "fst yY" and ?Y = "snd yY"
-
-        assume Pi: "($) (dual_sol (?Y(i := ?y)) (ranking (linorder_from_keys L (?Y(i := ?y))) G \<pi>)) \<in> {..<n} \<rightarrow> {0..1 / F}"
-
-        with \<open>Vs_enum i < n\<close> \<open>Vs_enum j < n\<close> 
-        have "dual_sol (?Y(i := ?y)) (ranking (linorder_from_keys L (?Y(i := ?y))) G \<pi>) $ Vs_enum i \<le> 1/F"
-          "dual_sol (?Y(i := ?y)) (ranking (linorder_from_keys L (?Y(i := ?y))) G \<pi>) $ Vs_enum j \<le> 1/F"
-          by auto
-
-        then show "dual_sol (?Y(i := ?y)) (ranking (linorder_from_keys L (?Y(i := ?y))) G \<pi>) $ Vs_enum i +
-         dual_sol (?Y(i := ?y)) (ranking (linorder_from_keys L (?Y(i := ?y))) G \<pi>) $ Vs_enum j
-         \<le> 2 / F"
-          by linarith
-      qed
-
-      also have "\<dots> = 2/F"
-        by (simp add: split_dim_prob_space.emeasure_space_1)
-
-      finally show ?case
-        by (simp add: order_le_less_trans)
-    qed
+      by (subst split_comp_eq[symmetric], rule Bochner_Integration.integrable_add; subst split_comp_eq)
+         (use \<open>i \<in> L\<close> in \<open>auto intro!: integrable_dual_component_split_dim\<close>)
   next
     case 3
     then show ?case
@@ -1158,7 +1133,7 @@ proof -
     show ?case
     proof (intro integrableI_real_bounded component_prob_space.borel_measurable_lebesgue_integral, goal_cases)
       case 1
-      from \<open>i \<in> L\<close> \<open>Vs_enum i < n\<close> \<open>Vs_enum j < n\<close>  show ?case
+      from \<open>i \<in> L\<close> \<open>Vs_enum i < n\<close> \<open>Vs_enum j < n\<close> show ?case
         using measurable_dual_component_split_dim
         by measurable
     next
@@ -1209,24 +1184,7 @@ proof -
       assume Y: "Y \<in> space (PiM (L - {i}) (\<lambda>i. U)) \<and> Y \<in> L-{i} \<rightarrow> {0..1} \<and> linorder_on (L - {i}) (linorder_from_keys (L - {i}) Y)"
 
       have integrable_offline_bound: "integrable U (\<lambda>y. g y / F * indicat_real {0..<y\<^sub>c Y \<pi> i j} y)"
-      proof (intro integrableI_real_bounded, goal_cases)
-        case 1
-        then show ?case
-          by measurable
-      next
-        case 2
-        then show ?case
-          by (rule eventually_mono[OF AE_U_in_range])
-            (auto intro: mult_nonneg_nonneg g_nonnegI)
-      next
-        case 3
-        have "\<integral>\<^sup>+ y. ennreal (g y / F * indicat_real {0..<y\<^sub>c Y \<pi> i j} y) \<partial>U \<le> 1/F"
-          by (intro subprob_space.nn_integral_le_const prob_space_imp_subprob_space eventually_mono[OF AE_U_in_range])
-            (auto intro: mult_le_one g_less_eq_OneI)
-
-        then show ?case
-          by (simp add: order_le_less_trans)
-      qed
+        by (auto intro!: integrable_divide intro: integrable_real_mult_indicator)
 
       have *: "(1 - g (y\<^sub>c Y \<pi> i j)) / F = component_prob_space.expectation (\<lambda>y. (1 - g (y\<^sub>c Y \<pi> i j)) / F)" for Y
         by (simp add: measure_def component_prob_space.emeasure_space_1)
