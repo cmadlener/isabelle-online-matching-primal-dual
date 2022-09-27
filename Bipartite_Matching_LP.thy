@@ -133,6 +133,9 @@ lemma primal_sol_nonneg[intro]: "primal_sol M \<ge> 0\<^sub>v m"
   unfolding primal_sol_def less_eq_vec_def
   by simp
 
+lemma primal_sol_empty[simp]: "primal_sol {} = 0\<^sub>v m"
+  unfolding primal_sol_def by auto
+
 lemma n_sum: "n = card L + card R"
   using parts_minimal finite_L finite_R
   by (auto simp: card_Un_disjoint n_def)

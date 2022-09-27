@@ -149,6 +149,11 @@ lemma
   unfolding dual_sol_def
   by (auto simp: n_sum)
 
+lemma dual_sol_init[simp]:
+  "dual_sol \<lparr> matching = M, charge = f, x = \<lambda>_. 0, z = \<lambda>_. 0 \<rparr> = 0\<^sub>v n"
+  unfolding dual_sol_def offline_dual_def online_dual_def append_vec_def
+  by (auto simp: Let_def n_sum)
+
 lemma primal_dot_bids_eq_value:
   assumes "M \<subseteq> G"
   shows "bids_vec \<bullet> primal_sol M = matching_value M"
@@ -647,6 +652,135 @@ lemma dual_nonneg:
   unfolding less_eq_vec_def dual_sol_def online_dual_def offline_dual_def
   using perm
   by (auto simp: n_sum intro: adwords_x_nonneg adwords_z_nonneg dest: permutations_of_setD)
+
+lemma dual_primal_times_adwords_step:
+  assumes "j \<in> R"
+  assumes "z s j = 0"
+  assumes "constraint_vec \<bullet> dual_sol s * (1 - 1 / c) = bids_vec \<bullet> primal_sol (matching s)"
+  shows "constraint_vec \<bullet> dual_sol (adwords_step s j) * (1 - 1 / c) = bids_vec \<bullet> primal_sol (matching (adwords_step s j))"
+proof (cases j rule: adwords_step_cases[where s = s])
+  case new_match
+  let ?i = "arg_max_on (\<lambda>i. b {i, j} * (1 - x s i)) {i. {i, j} \<in> G}"
+
+  from new_match bipartite_graph \<open>j \<in> R\<close> have "?i \<in> L"
+    by (auto dest: bipartite_edgeD)
+
+  from new_match 
+  have matching_insert: "matching (adwords_step s j) = insert {?i,j} (matching s)"
+    and edge: "{?i,j} \<in> G"
+    and x_upd: "x (adwords_step s j) = (x s)(?i := (x s) ?i * (1 + b {?i, j} / B ?i) + b {?i, j} / ((c-1) * B ?i))"
+    and z_upd: "z (adwords_step s j) = (z s)(j := b {?i, j} * (1 - (x s) ?i))"
+    by (simp_all add: adwords_step_def Let_def)
+
+  from new_match have "{?i,j} \<notin> matching s"
+    by (auto dest: edges_are_Vs)
+
+  with edge have insert_indices: "{0..<m} \<inter> {i. from_nat_into G i \<in> matching (adwords_step s j)} = 
+    insert (G_enum {?i,j}) ({0..<m} \<inter> {i. from_nat_into G i \<in> matching s})"
+    apply (auto simp: matching_insert countable_finite intro: G_enum_less_m)
+    apply (metis finite_graph m_def to_nat_on_from_nat_into_less)
+    done
+
+  from \<open>{?i,j} \<notin> matching s\<close> have "G_enum {?i,j} \<notin> ({0..<m} \<inter> {i. from_nat_into G i \<in> matching s})"
+    by (auto simp: countable_finite edge)
+
+  then have \<Delta>_primal: "bids_vec \<bullet> primal_sol (matching (adwords_step s j)) = b {?i,j} + bids_vec \<bullet> primal_sol (matching s)"
+    by (auto simp: scalar_prod_def primal_sol_def insert_indices countable_finite edge)
+
+  have \<Delta>_offline: "budget_constraint_vec \<bullet> offline_dual (adwords_step s j) = B ?i * (x s ?i * b {?i,j} / B ?i + b {?i,j} / ((c-1) * B ?i)) +
+    budget_constraint_vec \<bullet> offline_dual s" (is "?B' = ?\<Delta> + ?B")
+  proof -
+    from \<open>?i \<in> L\<close> have "to_nat_on L ?i < card L"
+      by (auto intro: L_enum_less_card)
+
+    with \<open>?i \<in> L\<close> have "?B' = B ?i * x (adwords_step s j) ?i + (\<Sum>i\<in>{0..<card L} - {to_nat_on L ?i}. B (from_nat_into L i) * x (adwords_step s j) (from_nat_into L i))"
+      unfolding budget_constraint_vec_def offline_dual_def scalar_prod_def
+      by (auto simp: sum.remove[where x = "to_nat_on L ?i"])
+
+    also have "\<dots> = B ?i * (x s ?i * (1 + b {?i, j} / B ?i) + b {?i, j} / ((c-1) * B ?i)) +
+      (\<Sum>i\<in>{0..<card L} - {to_nat_on L ?i}. B (from_nat_into L i) * x s (from_nat_into L i))"
+      apply (rule arg_cong2[where f= plus])
+       apply (auto simp add: x_upd intro!: sum.cong split: if_splits)
+      by (metis L_enum_inv)
+
+    also have "\<dots> = B ?i * (x s ?i * b {?i,j} / B ?i + b {?i,j} / ((c-1) * B ?i)) + B ?i * x s ?i +
+      (\<Sum>i\<in>{0..<card L} - {to_nat_on L ?i}. B (from_nat_into L i) * x s (from_nat_into L i))"
+      by (auto simp: field_simps)
+
+    also from \<open>?i \<in> L\<close> \<open>to_nat_on L ?i < card L\<close> have "\<dots> = ?\<Delta> +
+      (\<Sum>i\<in>{0..<card L}. B (from_nat_into L i) * x s (from_nat_into L i))"
+      by (auto simp: sum.remove[where x = "to_nat_on L ?i"])
+
+    finally show ?thesis
+      unfolding budget_constraint_vec_def offline_dual_def scalar_prod_def
+      by simp
+  qed
+
+  from \<open>j \<in> R\<close> have *: "{0..<card R} \<inter> {i. from_nat_into R i = j} = {to_nat_on R j}"
+    by (auto intro: R_enum_less_card)
+
+  from \<open>j \<in> R\<close> have **: "{0..<card R} \<inter> - {i. from_nat_into R i = j} = {0..<card R} - {to_nat_on R j}"
+    by auto
+
+  from \<open>z s j = 0\<close> \<open>j \<in> R\<close> have \<Delta>_online: "1\<^sub>v (card R) \<bullet> online_dual (adwords_step s j) = b {?i,j} * (1 - x s ?i) + 1\<^sub>v (card R) \<bullet> online_dual s"
+    unfolding scalar_prod_def online_dual_def
+    apply (auto simp: z_upd sum.If_cases * **)
+    apply (subst (2) sum.remove[where x = "to_nat_on R j"])
+      apply (auto intro: R_enum_less_card)
+    done
+
+  have "constraint_vec \<bullet> dual_sol (adwords_step s j) = budget_constraint_vec \<bullet> offline_dual (adwords_step s j) +
+    1\<^sub>v (card R) \<bullet> online_dual (adwords_step s j)"
+    unfolding constraint_vec_def dual_sol_def
+    by (auto intro!: scalar_prod_append)
+
+  also have "\<dots> = ?\<Delta> + ?B + b {?i,j} * (1 - x s ?i) + 1\<^sub>v (card R) \<bullet> online_dual s"
+    by (simp add: \<Delta>_offline \<Delta>_online)
+
+  also have "\<dots> = ?\<Delta> + b {?i,j} * (1 - x s ?i) + constraint_vec \<bullet> dual_sol s"
+    unfolding constraint_vec_def dual_sol_def
+    by (auto intro!: scalar_prod_append[symmetric])
+
+  finally have \<Delta>_dual: "constraint_vec \<bullet> dual_sol (adwords_step s j) = 
+    ?\<Delta> + b {?i,j} * (1 - x s ?i) + constraint_vec \<bullet> dual_sol s" .
+
+  have "\<dots> * (1 - 1/c) = (?\<Delta> + b {?i,j} * (1 - x s ?i)) * (1 - 1/c) + bids_vec \<bullet> primal_sol (matching s)"
+    by (auto simp: field_simps assms)
+
+  also from c_gt_1 \<open>?i \<in> L\<close> have "\<dots> = b {?i,j} + bids_vec \<bullet> primal_sol (matching s)"
+    by (auto simp: field_simps dest: budgets_pos)
+
+  finally show ?thesis 
+    by (auto simp flip: \<Delta>_primal simp: \<Delta>_dual)
+qed (use assms in \<open>auto simp: adwords_step_def\<close>)
+
+lemma dual_primal_times_adwords':
+  assumes "constraint_vec \<bullet> dual_sol s * (1 - 1 / c) = bids_vec \<bullet> primal_sol (adwords_state.matching s)"
+  assumes "distinct js"
+  assumes "set js \<subseteq> R"
+  assumes "\<forall>j \<in> set js. z s j = 0"
+  shows "constraint_vec \<bullet> dual_sol (adwords' s js) * (1 - 1 / c) = bids_vec \<bullet> primal_sol (matching (adwords' s js))"
+  using assms
+proof (induction js arbitrary: s)
+  case (Cons j js)
+
+  then have step: "constraint_vec \<bullet> dual_sol (adwords_step s j) * (1 - 1/c) = bids_vec \<bullet> primal_sol (matching (adwords_step s j))"
+    by (auto intro: dual_primal_times_adwords_step)
+
+  from Cons.prems have "\<forall>j' \<in> set js. z (adwords_step s j) j' = z s j'"
+    by (intro ballI adwords_step_z_unchanged) auto
+
+  with Cons.prems have "\<forall>j' \<in> set js. z (adwords_step s j) j' = 0"
+    by simp
+
+  with Cons step show ?case
+    by (auto simp: adwords_Cons)
+qed simp
+
+lemma dual_primal_times_adwords:
+  shows "constraint_vec \<bullet> dual_sol (adwords \<pi>) * (1 - 1/c) = bids_vec \<bullet> primal_sol (matching (adwords \<pi>))"
+  using perm c_gt_1
+  by (auto intro!: dual_primal_times_adwords' scalar_prod_right_zero dest: permutations_of_setD)
 
 end
 
