@@ -20,6 +20,11 @@ proof -
   finally show "finite {f x y| x y. P x y}" .
 qed
 
+lemma ln_1_plus_x_over_x_mono:
+  fixes x y :: real
+  assumes "0 < x" "x \<le> y"
+  shows "ln (1 + y) / y \<le> ln (1 + x) / x"
+  sorry
 
 record 'a adwords_state =
   matching :: "'a graph"
@@ -367,16 +372,14 @@ proof -
   qed (use assms in auto)
 qed
 
+lemma finite_bid_ratios:
+  "finite {b {i, j} / B i |i j. {i, j} \<in> G \<and> i \<in> L \<and> j \<in> R}"
+  by (auto intro!: finite_image_set2' intro: finite_subset[where B = "Vs G \<times> Vs G"] dest: edges_are_Vs)
+
 lemma R_max_pos: "0 < R_max"
   unfolding R_max_def
   apply (subst Max_gr_iff)
-    apply (rule finite_image_set2')
-    apply (rule finite_subset[where B = "Vs G \<times> Vs G"])
-  subgoal
-    apply (auto dest: edges_are_Vs)
-    done
-  subgoal
-    by blast
+  apply (rule finite_bid_ratios)
   subgoal
     using bipartite_graph graph_non_empty
     apply auto
@@ -387,10 +390,56 @@ lemma R_max_pos: "0 < R_max"
     by (metis bids_pos bipartite_edgeE bipartite_graph budgets_pos divide_pos_pos)
   done
 
+lemma R_max_ge:
+  assumes "i \<in> L"
+  assumes "{i,j} \<in> G"
+  shows "b {i,j} / B i \<le> R_max"
+  unfolding R_max_def
+  using assms bipartite_graph
+  by (auto intro: Max_ge finite_bid_ratios dest: bipartite_edgeD)
+
 lemma c_gt_1: "1 < c"
   unfolding c_def
   using R_max_pos
   by auto
+
+lemma c_powr_bid_ratio_le:
+  assumes "i \<in> L"
+  assumes "{i,j} \<in> G"
+  shows "c powr (b {i, j} / B i) \<le> 1 + b {i, j} / B i"
+proof -
+  from c_gt_1 have *: "0 < y \<Longrightarrow> c powr y \<le> 1 + y \<longleftrightarrow> ln c \<le> ln (1 + y) / y" for y
+    by (subst powr_le_iff) (auto simp: log_def field_simps)
+
+  from assms have ratio_pos: "0 < b {i,j} / B i"
+    by (auto dest!: budgets_pos bids_pos simp: field_simps)
+
+  from R_max_pos have "ln c = ln (1 + R_max) / R_max"
+    unfolding c_def
+    by (auto simp: ln_powr)
+
+  also from assms have "\<dots> \<le> ln (1 + b {i,j} / B i) / (b {i,j} / B i)"
+    by (intro ln_1_plus_x_over_x_mono)
+       (auto intro: ratio_pos R_max_ge)
+
+  finally show ?thesis
+    using ratio_pos
+    by (simp add: *)
+qed
+
+lemma adwords_step_subgraph:
+  assumes "matching s \<subseteq> G"
+  shows "matching (adwords_step s j) \<subseteq> G"
+  using assms
+  by (cases j rule: adwords_step_cases[where s = s])
+     (auto simp: adwords_step_def Let_def)
+
+lemma adwords_subgraph:
+  assumes "matching s \<subseteq> G"
+  shows "matching (adwords' s js) \<subseteq> G"
+  using assms
+  by (induction js arbitrary: s)
+     (auto simp: adwords_Cons dest: adwords_step_subgraph)
 
 lemma adwords_step_x_mono:
   assumes "0 \<le> x s i"
@@ -781,6 +830,78 @@ lemma dual_primal_times_adwords:
   shows "constraint_vec \<bullet> dual_sol (adwords \<pi>) * (1 - 1/c) = bids_vec \<bullet> primal_sol (matching (adwords \<pi>))"
   using perm c_gt_1
   by (auto intro!: dual_primal_times_adwords' scalar_prod_right_zero dest: permutations_of_setD)
+
+lemma primal_almost_feasible_adwords_step:
+  assumes "i \<in> L"
+  assumes "j \<in> R"
+  assumes "matching s \<subseteq> G"
+  assumes "1/(c-1) * (c powr (charge_of (matching s) i / B i) - 1) \<le> x s i"
+  shows "1/(c-1) * (c powr (charge_of (matching (adwords_step s j)) i / B i) - 1) \<le> x (adwords_step s j) i"
+proof (cases j rule: adwords_step_cases[where s = s])
+  case new_match
+  let ?i' = "arg_max_on (\<lambda>i. b {i, j} * (1 - x s i)) {i. {i, j} \<in> G}"
+
+  from new_match have matching_eq: "matching (adwords_step s j) = insert {?i',j} (matching s)"
+    by (simp add: adwords_step_def Let_def)
+
+  show ?thesis
+  proof (cases "?i' = i")
+    case True
+    then have *: "{e\<in>matching (adwords_step s j). i \<in> e} = insert {i,j} {e\<in>matching s. i \<in> e}"
+      by (auto simp: matching_eq)
+
+    from new_match True have "{i,j} \<in> G"
+      by blast
+
+    with \<open>j \<notin> Vs (matching s)\<close> have "1/(c-1) * (c powr (charge_of (matching (adwords_step s j)) i / B i) - 1) =
+      1/(c-1) * (c powr (charge_of (matching s) i / B i) * c powr (b {i,j} / B i) - 1)"
+      by (subst *, subst sum.insert)
+         (auto dest: edges_are_Vs simp: ac_simps add_divide_distrib powr_add
+               intro: finite_subset[OF _ finite_subset[OF \<open>matching s \<subseteq> G\<close>]])
+
+    also from c_gt_1 \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> \<le> 1/(c-1) * (c powr (charge_of (matching s) i / B i) * (1 + b {i,j} / B i) - 1)"
+      by (auto intro!: divide_right_mono c_powr_bid_ratio_le)
+
+    also from c_gt_1 \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> = 1/(c-1) * (c powr (charge_of (matching s) i / B i) - 1) * (1 + b {i,j} / B i) + b {i,j} / ((c-1) * B i)"
+      by (auto simp: field_simps dest: budgets_pos)
+
+    also from assms \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> \<le> x s i * (1 + b {i,j} / B i) + b {i,j} / ((c-1) * B i)"
+      by (subst add_le_cancel_right, intro mult_right_mono)
+         (auto dest!: bids_pos budgets_pos)
+
+    also from new_match True have "\<dots> = x (adwords_step s j) i"
+      by (simp add: adwords_step_def)
+
+    finally show ?thesis .
+  next
+    case False
+    with \<open>i \<in> L\<close> \<open>j \<in> R\<close> have *: "{e \<in> matching (adwords_step s j). i \<in> e} = {e \<in> matching s. i \<in> e}"
+      by (auto simp: matching_eq)
+
+    from new_match assms False show ?thesis
+      by (subst *) (simp add: adwords_step_def Let_def)
+  qed
+qed (use assms in \<open>simp_all add: adwords_step_def\<close>)
+
+lemma primal_almost_feasible_adwords:
+  assumes "i \<in> L"
+  assumes "set js \<subseteq> R"
+  assumes "matching s \<subseteq> G"
+  assumes "1/(c-1) * (c powr (charge_of (matching s) i / B i) - 1) \<le> x s i"
+  shows "1/(c-1) * (c powr (charge_of (matching (adwords' s js)) i / B i) - 1) \<le> x (adwords' s js) i"
+  using assms
+proof (induction js arbitrary: s)
+  case (Cons j js)
+
+  from Cons.prems have step_le: "1/(c-1) * (c powr ((\<Sum>e\<in>{e \<in> matching (adwords_step s j). i \<in> e}. b e) / B i) - 1) \<le> x (adwords_step s j) i"
+    by (intro primal_almost_feasible_adwords_step) auto
+
+  from Cons.prems have "matching (adwords_step s j) \<subseteq> G"
+    by (auto dest: adwords_step_subgraph)
+
+  with Cons step_le show ?case
+    by (auto simp: adwords_Cons)
+qed simp
 
 end
 
