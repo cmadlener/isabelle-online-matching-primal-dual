@@ -50,34 +50,11 @@ lemma
     and R_non_empty[intro,simp]: "R \<noteq> {}"
   using bipartite_edgeE bipartite_graph graph_non_empty by blast+
 
-abbreviation "matching_value M \<equiv> \<Sum>e\<in>M. b e"
-abbreviation "charge_of M i \<equiv> \<Sum>e\<in>{e \<in> M. i \<in> e}. b e"
+abbreviation "total_bid_of M i \<equiv> \<Sum>e\<in>{e \<in> M. i \<in> e}. b e"
+abbreviation "matching_value M \<equiv> \<Sum>i\<in>L. min (B i) (total_bid_of M i)"
 
-definition "feasible_matching M \<longleftrightarrow> one_sided_matching G M R \<and>
-  (\<forall>i \<in> L. charge_of M i \<le> B i)"
-
-lemma feasible_matchingI:
-  assumes "one_sided_matching G M R"
-  assumes "\<And>i. i \<in> L \<Longrightarrow> charge_of M i \<le> B i"
-  shows "feasible_matching M"
-  unfolding feasible_matching_def
-  using assms
-  by blast
-
-lemma feasible_matching_one_sidedD:
-  "feasible_matching M \<Longrightarrow> one_sided_matching G M R"
-  unfolding feasible_matching_def by blast
-
-lemma feasible_matching_chargeD:
-  assumes "feasible_matching M"
-  assumes "i \<in> L"
-  shows "charge_of M i \<le> B i"
-  using assms
-  unfolding feasible_matching_def
-  by blast
-
-definition "max_value_matching M \<longleftrightarrow> feasible_matching M \<and>
-  (\<forall>M'. feasible_matching M \<longrightarrow> matching_value M' \<le> matching_value M)"
+definition "max_value_matching M \<longleftrightarrow> one_sided_matching G M R \<and>
+  (\<forall>M'. one_sided_matching G M' R \<longrightarrow> matching_value M' \<le> matching_value M)"
 
 abbreviation bids_vec :: "real vec" where
   "bids_vec \<equiv> vec m (\<lambda>i. b (from_nat_into G i))"
@@ -97,6 +74,15 @@ definition constraint_matrix :: "real mat" where
 definition constraint_vec :: "real vec" where
   "constraint_vec \<equiv> budget_constraint_vec @\<^sub>v 1\<^sub>v (card R)"
 
+definition adwords_primal_sol :: "'a graph \<Rightarrow> real vec" where
+  "adwords_primal_sol M \<equiv> vec m 
+  (\<lambda>k. of_bool (from_nat_into G k \<in> M) * (let i = (THE i. i \<in> L \<and> i \<in> from_nat_into G k) in
+    if total_bid_of M i \<le> B i
+    \<comment> \<open>if budget is not used up, use assignment as is\<close>
+    then 1
+    \<comment> \<open>otherwise split up overspend over all edges\<close>
+    else B i / total_bid_of M i))"
+
 definition offline_dual :: "'a adwords_state \<Rightarrow> real vec" where
   "offline_dual s \<equiv> vec (card L) (\<lambda>i. x s (from_nat_into L i))"
 
@@ -106,7 +92,7 @@ definition online_dual :: "'a adwords_state \<Rightarrow> real vec" where
 definition dual_sol :: "'a adwords_state \<Rightarrow> real vec" where
   "dual_sol s \<equiv> offline_dual s @\<^sub>v online_dual s"
 
-lemma max_value_matchingD: "max_value_matching M \<Longrightarrow> feasible_matching M"
+lemma max_value_matchingD: "max_value_matching M \<Longrightarrow> one_sided_matching G M R"
   unfolding max_value_matching_def by blast
 
 lemma 
@@ -139,6 +125,11 @@ lemma
   by (auto simp: n_sum)
 
 lemma 
+  shows dim_adwords_primal[simp]: "dim_vec (adwords_primal_sol M) = m"
+    and adwords_primal_carrier_vec[intro]: "adwords_primal_sol M \<in> carrier_vec m"
+  unfolding adwords_primal_sol_def by simp_all
+
+lemma 
   shows dim_offline_dual[simp]: "dim_vec (offline_dual s) = card L"
     and offline_dual_carrier_vec[intro]: "offline_dual s \<in> carrier_vec (card L)"
   unfolding offline_dual_def by simp_all
@@ -159,146 +150,148 @@ lemma dual_sol_init[simp]:
   unfolding dual_sol_def offline_dual_def online_dual_def append_vec_def
   by (auto simp: Let_def n_sum)
 
+lemma subgraph_UNION_decomp:
+  assumes "M \<subseteq> G"
+  shows "M = (\<Union>i\<in>L. {e \<in> M. i \<in> e})"
+  using assms bipartite_subgraph[OF bipartite_graph assms]
+  by (force elim: bipartite_edgeE)
+
+lemma subgraph_decomp_disjoint:
+  assumes "M \<subseteq> G"
+  assumes "i \<in> L" "i' \<in> L" "i \<noteq> i'"
+  shows "{e \<in> M. i \<in> e} \<inter> {e \<in> M. i' \<in> e} = {}"
+  using assms bipartite_subgraph[OF bipartite_graph \<open>M \<subseteq> G\<close>]
+  by (auto elim: bipartite_edgeE)
+
+lemma total_bid_of_nonneg[intro]:
+  assumes "M \<subseteq> G"
+  shows "total_bid_of M i \<ge> 0"
+  using assms
+  by (auto intro!: sum_nonneg dest!: bids_pos subsetD)
+
+lemma adwords_primal_sol_nonneg[intro]:
+  assumes "M \<subseteq> G"
+  shows "adwords_primal_sol M \<ge> 0\<^sub>v m"
+  unfolding adwords_primal_sol_def less_eq_vec_def
+  using total_bid_of_nonneg[OF assms] assms
+  by (auto simp: Let_def intro!: divide_nonneg_nonneg[OF order_less_imp_le] dest: budgets_pos the_l_subset_in_LI)
+
 lemma primal_dot_bids_eq_value:
   assumes "M \<subseteq> G"
-  shows "bids_vec \<bullet> primal_sol M = matching_value M"
-  unfolding scalar_prod_def primal_sol_def
-  using assms
-  by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = G_enum]
-           intro: to_nat_on_from_nat_into_less simp: m_def to_nat_on_less_card countable_finite)
+  shows "bids_vec \<bullet> adwords_primal_sol M = matching_value M"
+proof -
+  have "bids_vec \<bullet> adwords_primal_sol M = 
+    (\<Sum>k \<in> {0..<m} \<inter> {k. from_nat_into G k \<in> M}. b (from_nat_into G k) *
+      (let i = (THE i. i \<in> L \<and> i \<in> from_nat_into G k) in if total_bid_of M i \<le> B i then 1 else B i / total_bid_of M i))"
+    unfolding scalar_prod_def adwords_primal_sol_def
+    by (auto simp flip: sum_of_bool_mult_eq simp: algebra_simps)
 
-lemma feasible_matching_budget_constraint:
-  assumes "feasible_matching M"
-  shows "budget_constraint_mat *\<^sub>v primal_sol M \<le> budget_constraint_vec"
+  also from \<open>M \<subseteq> G\<close> have "\<dots> = (\<Sum>e\<in>M. b e *
+    (let i = (THE i. i \<in> L \<and> i \<in> e) in if total_bid_of M i \<le> B i then 1 else B i / total_bid_of M i))"
+    by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = G_enum]
+             intro: to_nat_on_from_nat_into_less simp: countable_finite m_def to_nat_on_less_card)
+
+  also from bipartite_graph \<open>M \<subseteq> G\<close> have "\<dots> = (\<Sum>i\<in>L. (\<Sum>e\<in>{e\<in>M. i \<in> e}. b e * (if total_bid_of M i \<le> B i then 1 else B i / total_bid_of M i)))"
+    apply (subst (3) subgraph_UNION_decomp[OF \<open>M \<subseteq> G\<close>], subst sum.UNION_disjoint)
+       apply (auto simp: finite_L intro: finite_subset[where B = G] dest: subgraph_decomp_disjoint intro!: sum.cong)
+     apply (smt (verit, ccfv_threshold) Collect_cong bipartite_commute bipartite_eqI in_mono the_equality)+
+    done
+
+  also have "\<dots> = matching_value M"
+    by (auto intro!: sum.cong simp flip: sum_distrib_right sum_divide_distrib dest: budgets_pos)
+
+  finally show ?thesis .
+qed
+
+lemma subgraph_budget_constraint:
+  assumes "M \<subseteq> G"
+  shows "budget_constraint_mat *\<^sub>v adwords_primal_sol M \<le> budget_constraint_vec"
   unfolding less_eq_vec_def
 proof (intro conjI allI impI, simp_all)
-  fix i assume [intro,simp]: "i < card L"
+  fix k assume [intro,simp]: "k < card L"
+  let ?i = "from_nat_into L k"
 
-  from assms have "row budget_constraint_mat i \<bullet> primal_sol M = charge_of M (from_nat_into L i)"
-    unfolding scalar_prod_def budget_constraint_mat_def primal_sol_def m_def
-    by (auto simp:  to_nat_on_from_nat_into_less countable_finite to_nat_on_less_card
-             intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = G_enum]
-             dest!: feasible_matching_one_sidedD one_sided_matching_subgraphD)
+  have "?i \<in> L"
+    by (simp add: from_nat_into)
 
-  also from assms have "\<dots> \<le> B (from_nat_into L i)"
-    by (auto intro: feasible_matching_chargeD  Vs_enum_inv_leftE simp flip: Vs_enum_inv_from_nat_into_L)
+  with bipartite_subgraph[OF bipartite_graph \<open>M \<subseteq> G\<close>] have the_i: "e \<in> M \<Longrightarrow> ?i \<in> e \<Longrightarrow> (THE i. i \<in> L \<and> i \<in> e) = ?i" for e
+    by (auto elim: bipartite_edgeE)
 
-  also have "\<dots> = budget_constraint_vec $ i"
+  from assms have "row budget_constraint_mat k \<bullet> adwords_primal_sol M = 
+    (\<Sum>k \<in> {0..<m} \<inter> {k. ?i \<in> from_nat_into G k} \<inter> {k. from_nat_into G k \<in> M}. b (from_nat_into G k) *
+      (let i' = (THE i'. i' \<in> L \<and> i' \<in> from_nat_into G k) in if total_bid_of M i' \<le> B i' then 1 else B i' / total_bid_of M i'))"
+    unfolding scalar_prod_def budget_constraint_mat_def adwords_primal_sol_def m_def
+    by (auto simp flip: sum_of_bool_mult_eq simp: algebra_simps)
+
+  also from \<open>M \<subseteq> G\<close> \<open>?i \<in> L\<close> have "\<dots> = (\<Sum>e\<in>{e\<in>M. ?i \<in> e}. b e * (if total_bid_of M ?i \<le> B ?i then 1 else B ?i / total_bid_of M ?i))"
+    unfolding m_def
+    by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = G_enum]
+             intro: to_nat_on_from_nat_into_less
+             simp: countable_finite to_nat_on_less_card Let_def dest: the_i)
+
+  also from \<open>?i \<in> L\<close> have "\<dots> \<le> B ?i"
+    by (auto simp flip: sum_distrib_right dest: budgets_pos)
+
+  also have "\<dots> = budget_constraint_vec $ k"
     unfolding budget_constraint_vec_def by simp
 
-  finally show "row budget_constraint_mat i \<bullet> primal_sol M \<le> budget_constraint_vec $ i" .
+  finally show "row budget_constraint_mat k \<bullet> adwords_primal_sol M \<le> budget_constraint_vec $ k" .
 qed
 
 lemma one_sided_matching_matching_constraint:
   assumes "one_sided_matching G M R"
-  shows "matching_constraint_mat *\<^sub>v primal_sol M \<le> 1\<^sub>v (card R)"
+  shows "matching_constraint_mat *\<^sub>v adwords_primal_sol M \<le> 1\<^sub>v (card R)"
   unfolding less_eq_vec_def
 proof (intro conjI allI impI, simp_all)
-  fix i assume [intro,simp]: "i < card R"
+  fix k assume [intro,simp]: "k < card R"
+  let ?j = "from_nat_into R k"
 
-  have online: "from_nat_into R i \<in> R"
-    by (metis \<open>i < card R\<close> bot_nat_0.extremum_strict card.empty from_nat_into)
+  from assms have "M \<subseteq> G" by (auto dest: one_sided_matching_subgraphD)
 
-  from assms have "row matching_constraint_mat i \<bullet> primal_sol M = card {e\<in>M. (from_nat_into R i \<in> e)}"
-    unfolding scalar_prod_def matching_constraint_mat_def primal_sol_def m_def
-    by (auto intro!: bij_betw_same_card[where f = "from_nat_into G"] bij_betwI[where g = G_enum]
-                     to_nat_on_less_card 
-             intro: to_nat_on_from_nat_into_less
-             dest: one_sided_matching_subgraphD'
-             simp: countable_finite)
+  have online: "?j \<in> R"
+    by (metis \<open>k < card R\<close> bot_nat_0.extremum_strict card.empty from_nat_into)
+
+  from online \<open>M \<subseteq> G\<close> have "row matching_constraint_mat k \<bullet> adwords_primal_sol M = 
+    (\<Sum>e\<in>{e\<in>M. ?j \<in> e}. let i = THE i. i \<in> L \<and> i \<in> e in if total_bid_of M i \<le> B i then 1 else B i / total_bid_of M i)"
+    unfolding scalar_prod_def matching_constraint_mat_def adwords_primal_sol_def m_def
+    by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = G_enum]
+             intro: to_nat_on_from_nat_into_less simp: countable_finite to_nat_on_less_card)
+
+  also from \<open>M \<subseteq> G\<close> have "\<dots> \<le> (\<Sum>e\<in>{e\<in>M. ?j \<in> e}. 1)"
+    by (intro sum_mono)
+       (auto simp: Let_def dest: the_l_subset_in_LI dest!: budgets_pos bids_pos)
 
   also from assms online have "\<dots> \<le> 1"
     unfolding one_sided_matching_def
     by auto
 
-  finally show "row matching_constraint_mat i \<bullet> primal_sol M \<le> 1" .
+  finally show "row matching_constraint_mat k \<bullet> adwords_primal_sol M \<le> 1" .
 qed
 
-lemma feasible_matching_feasible:
-  assumes "feasible_matching M"
-  shows "constraint_matrix *\<^sub>v primal_sol M \<le> constraint_vec"
+lemma one_sided_matching_feasible:
+  assumes "one_sided_matching G M R"
+  shows "constraint_matrix *\<^sub>v adwords_primal_sol M \<le> constraint_vec"
   unfolding constraint_matrix_def constraint_vec_def
   by (subst append_rows_le)
-     (use assms in \<open>auto intro: feasible_matching_budget_constraint one_sided_matching_matching_constraint 
-                         dest: feasible_matching_one_sidedD\<close>)
+     (use assms in \<open>auto intro: subgraph_budget_constraint one_sided_matching_matching_constraint
+                         dest: one_sided_matching_subgraphD\<close>)
 
-lemma budget_constraint_feasible:
-  assumes "M \<subseteq> G"
-  assumes "budget_constraint_mat *\<^sub>v primal_sol M \<le> budget_constraint_vec"
-  assumes "i \<in> L"
-  shows "charge_of M i \<le> B i"
-proof -
-  from \<open>i \<in> L\<close> have index: "to_nat_on L i < card L"
-    using L_enum_less_card by blast
-
-  with \<open>M \<subseteq> G\<close> \<open>i \<in> L\<close> have "charge_of M i = (budget_constraint_mat *\<^sub>v primal_sol M) $ to_nat_on L i"
-    unfolding mult_mat_vec_def scalar_prod_def budget_constraint_mat_def primal_sol_def
-    by (auto intro!: sum.reindex_bij_witness[where j = G_enum and i = "from_nat_into G"]
-             simp: countable_finite m_def to_nat_on_less_card to_nat_on_from_nat_into_less)
-
-  also from assms index have "\<dots> \<le> B i"
-    unfolding less_eq_vec_def budget_constraint_vec_def
-    by auto
-
-  finally show "charge_of M i \<le> B i" .
-qed
-
-lemma matching_constraint_one_sided_matching:
-  assumes "M \<subseteq> G"
-  assumes "matching_constraint_mat *\<^sub>v primal_sol M \<le> 1\<^sub>v (card R)"
-  shows "one_sided_matching G M R"
-proof (intro one_sided_matchingI)
-  fix j assume "j \<in> R"
-
-  then have index: "to_nat_on R j < card R"
-    using R_enum_less_card by blast
-
-  from \<open>M \<subseteq> G\<close> have "finite M"
-    by (auto intro: finite_subset)
-
-  with index \<open>M \<subseteq> G\<close> \<open>j \<in> R\<close> have 
-    "card {e \<in> M. j \<in> e} = (matching_constraint_mat *\<^sub>v primal_sol M) $ to_nat_on R j"
-    unfolding mult_mat_vec_def scalar_prod_def matching_constraint_mat_def primal_sol_def
-    by (auto intro!: bij_betw_same_card[where f = G_enum] bij_betwI[where g = "from_nat_into G"]
-             simp: Int_def m_def to_nat_on_less_card to_nat_on_from_nat_into_less countable_finite)
-
-  also from index assms have "\<dots> \<le> 1"
-    unfolding less_eq_vec_def
-    by auto
-
-  finally show "card {e \<in> M. j \<in> e} \<le> 1"
-    by simp
-qed (use assms in simp)
-
-lemma feasible_feasible_matching:
-  assumes "M \<subseteq> G"
-  assumes "constraint_matrix *\<^sub>v primal_sol M \<le> constraint_vec"
-  shows "feasible_matching M"
-  using assms
-  unfolding constraint_matrix_def constraint_vec_def
-  by (subst (asm) append_rows_le)
-     (auto intro: feasible_matchingI matching_constraint_one_sided_matching budget_constraint_feasible)
-
-lemma feasible_matching_iff_feasible:
-  assumes "M \<subseteq> G"
-  shows "feasible_matching M \<longleftrightarrow> constraint_matrix *\<^sub>v primal_sol M \<le> constraint_vec"
-  using assms
-  by (auto intro: feasible_matching_feasible feasible_feasible_matching)
 
 lemma matching_value_bound_by_feasible_dual:
   fixes y :: "real vec"
-  assumes "feasible_matching M"
+  assumes "one_sided_matching G M R"
 
   assumes "constraint_matrix\<^sup>T *\<^sub>v y \<ge> bids_vec"
   assumes "y \<ge> 0\<^sub>v n"
 
   shows "matching_value M \<le> constraint_vec \<bullet> y"
 proof -
-  from assms have "matching_value M = bids_vec \<bullet> primal_sol M"
-    by (auto simp: primal_dot_bids_eq_value dest!: feasible_matching_one_sidedD one_sided_matching_subgraphD)
+  from assms have "matching_value M = bids_vec \<bullet> adwords_primal_sol M"
+    by (auto simp: primal_dot_bids_eq_value dest: one_sided_matching_subgraphD)
 
   also from assms have "\<dots> \<le> constraint_vec \<bullet> y"
-    by (auto intro: weak_duality_theorem_nonneg_primal[where A = constraint_matrix] feasible_matching_feasible)
+    by (auto intro!: weak_duality_theorem_nonneg_primal[where A = constraint_matrix] one_sided_matching_feasible 
+             dest: one_sided_matching_subgraphD)
 
   finally show ?thesis .
 qed
@@ -835,8 +828,8 @@ lemma primal_almost_feasible_adwords_step:
   assumes "i \<in> L"
   assumes "j \<in> R"
   assumes "matching s \<subseteq> G"
-  assumes "1/(c-1) * (c powr (charge_of (matching s) i / B i) - 1) \<le> x s i"
-  shows "1/(c-1) * (c powr (charge_of (matching (adwords_step s j)) i / B i) - 1) \<le> x (adwords_step s j) i"
+  assumes "1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
+  shows "1/(c-1) * (c powr (total_bid_of (matching (adwords_step s j)) i / B i) - 1) \<le> x (adwords_step s j) i"
 proof (cases j rule: adwords_step_cases[where s = s])
   case new_match
   let ?i' = "arg_max_on (\<lambda>i. b {i, j} * (1 - x s i)) {i. {i, j} \<in> G}"
@@ -853,16 +846,16 @@ proof (cases j rule: adwords_step_cases[where s = s])
     from new_match True have "{i,j} \<in> G"
       by blast
 
-    with \<open>j \<notin> Vs (matching s)\<close> have "1/(c-1) * (c powr (charge_of (matching (adwords_step s j)) i / B i) - 1) =
-      1/(c-1) * (c powr (charge_of (matching s) i / B i) * c powr (b {i,j} / B i) - 1)"
+    with \<open>j \<notin> Vs (matching s)\<close> have "1/(c-1) * (c powr (total_bid_of (matching (adwords_step s j)) i / B i) - 1) =
+      1/(c-1) * (c powr (total_bid_of (matching s) i / B i) * c powr (b {i,j} / B i) - 1)"
       by (subst *, subst sum.insert)
          (auto dest: edges_are_Vs simp: ac_simps add_divide_distrib powr_add
                intro: finite_subset[OF _ finite_subset[OF \<open>matching s \<subseteq> G\<close>]])
 
-    also from c_gt_1 \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> \<le> 1/(c-1) * (c powr (charge_of (matching s) i / B i) * (1 + b {i,j} / B i) - 1)"
+    also from c_gt_1 \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> \<le> 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) * (1 + b {i,j} / B i) - 1)"
       by (auto intro!: divide_right_mono c_powr_bid_ratio_le)
 
-    also from c_gt_1 \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> = 1/(c-1) * (c powr (charge_of (matching s) i / B i) - 1) * (1 + b {i,j} / B i) + b {i,j} / ((c-1) * B i)"
+    also from c_gt_1 \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> = 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) * (1 + b {i,j} / B i) + b {i,j} / ((c-1) * B i)"
       by (auto simp: field_simps dest: budgets_pos)
 
     also from assms \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> \<le> x s i * (1 + b {i,j} / B i) + b {i,j} / ((c-1) * B i)"
@@ -887,8 +880,8 @@ lemma primal_almost_feasible_adwords:
   assumes "i \<in> L"
   assumes "set js \<subseteq> R"
   assumes "matching s \<subseteq> G"
-  assumes "1/(c-1) * (c powr (charge_of (matching s) i / B i) - 1) \<le> x s i"
-  shows "1/(c-1) * (c powr (charge_of (matching (adwords' s js)) i / B i) - 1) \<le> x (adwords' s js) i"
+  assumes "1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
+  shows "1/(c-1) * (c powr (total_bid_of (matching (adwords' s js)) i / B i) - 1) \<le> x (adwords' s js) i"
   using assms
 proof (induction js arbitrary: s)
   case (Cons j js)

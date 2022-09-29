@@ -257,6 +257,34 @@ lemma Vs_enum_neqI: "v \<in> Vs G \<Longrightarrow> v' \<in> Vs G \<Longrightarr
 lemma G_enum_neqI: "e \<in> G \<Longrightarrow> e' \<in> G \<Longrightarrow> e \<noteq> e' \<Longrightarrow> G_enum e \<noteq> G_enum e'"
   by (simp add: countable_finite)
 
+lemma the_lE:
+  assumes "e \<in> G"
+  obtains "(THE l. l \<in> L \<and> l \<in> e) \<in> L" "(THE l. l \<in> L \<and> l \<in> e) \<in> e"
+proof
+  from assms bipartite_graph obtain l r where "e = {l,r}" "l \<in> L" "r \<in> R"
+    by (auto elim: bipartite_edgeE)
+
+  then have "(THE l. l \<in> L \<and> l \<in> e) = l"
+    by auto
+
+  with \<open>e = {l,r}\<close> \<open>l \<in> L\<close> show "(THE l. l \<in> L \<and> l \<in> e) \<in> L" "(THE l. l \<in> L \<and> l \<in> e) \<in> e"
+    by auto
+qed
+
+lemma the_l_subsetE:
+  assumes "M \<subseteq> G"
+  assumes "e \<in> M"
+  obtains "(THE l. l \<in> L \<and> l \<in> e) \<in> L" "(THE l. l \<in> L \<and> l \<in> e) \<in> e"
+  using assms
+  by (auto elim: the_lE)
+
+lemma the_l_subset_in_LI:
+  assumes "M \<subseteq> G"
+  assumes "e \<in> M"
+  shows "(THE l. l \<in> L \<and> l \<in> e) \<in> L"
+  using assms
+  by (auto elim: the_l_subsetE)
+
 lemma primal_dot_One_card: "M \<subseteq> G \<Longrightarrow> 1\<^sub>v m \<bullet> primal_sol M = card M"
   by (auto simp: scalar_prod_def m_def primal_sol_def countable_finite in_mono
            intro!: bij_betw_same_card[where f = "from_nat_into G"] bij_betwI[where g = G_enum] 
