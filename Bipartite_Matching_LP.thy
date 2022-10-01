@@ -82,7 +82,7 @@ locale bipartite_matching_lp =
   fixes L :: "'a set" and R :: "'a set"
   fixes G :: "'a graph"
 
-  assumes finite_L: "finite L" and finite_R: "finite R"
+  assumes finite_L[intro,simp]: "finite L" and finite_R[intro,simp]: "finite R"
   assumes bipartite_graph: "bipartite G L R"
   assumes parts_minimal: "Vs G = L \<union> R"
 begin
@@ -137,7 +137,7 @@ lemma primal_sol_empty[simp]: "primal_sol {} = 0\<^sub>v m"
   unfolding primal_sol_def by auto
 
 lemma n_sum: "n = card L + card R"
-  using parts_minimal finite_L finite_R
+  using parts_minimal
   by (auto simp: card_Un_disjoint n_def)
 
 lemma geq_L_less_n_less_R: "card L \<le> i \<Longrightarrow> i < n \<Longrightarrow> i - card L < card R"
@@ -163,13 +163,11 @@ lemma
     and L_enum_inv[simp]: "i < card L \<Longrightarrow> to_nat_on L (from_nat_into L i) = i"
     and R_inv_enum[simp]: "r \<in> R \<Longrightarrow> from_nat_into R (to_nat_on R r) = r"
     and R_enum_inv[simp]: "j < card R \<Longrightarrow> to_nat_on R (from_nat_into R j) = j"
-  using finite_L finite_R
   by (auto simp: countable_finite intro: to_nat_on_from_nat_into_less)
 
 lemma
   shows L_enum_less_card: "l \<in> L \<Longrightarrow> to_nat_on L l < card L"
     and R_enum_less_card: "r \<in> R \<Longrightarrow> to_nat_on R r < card R"
-  using finite_L finite_R
   by (auto intro: to_nat_on_less_card)
 
 lemma
@@ -206,7 +204,6 @@ lemma Vs_enum_geq_card_L: "r \<in> R \<Longrightarrow> card L \<le> Vs_enum r"
 lemma
   shows Vs_inv_enum[simp]: "x \<in> Vs G \<Longrightarrow> Vs_enum_inv (Vs_enum x) = x"
     and Vs_enum_inv[simp]: "i < n \<Longrightarrow> Vs_enum (Vs_enum_inv i) = i"
-  using finite_L finite_R
   by (auto elim!: Vs_cases simp: Vs_enum_inv_def Vs_enum_def n_sum dest: L_enum_less_card intro!: from_nat_into)
 
 lemma

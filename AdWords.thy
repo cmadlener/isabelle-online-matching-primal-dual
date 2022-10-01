@@ -20,11 +20,39 @@ proof -
   finally show "finite {f x y| x y. P x y}" .
 qed
 
+lemma (in linordered_nonzero_semiring) mult_right_le: "c \<le> 1 \<Longrightarrow> 0 \<le> a \<Longrightarrow> c * a \<le> a"
+  using mult_right_mono[of c 1 a] by simp
+
+lemma ln_one_plus_x_over_x_deriv':
+  assumes "0 < x"
+  shows "((\<lambda>x. ln (1 + x) / x) has_real_derivative (((1/(1+x) *(0 + 1)) * x - ln (1+x) * 1) / (x * x))) (at x)"
+  using assms
+  by (intro derivative_intros)
+     auto
+  
+lemmas ln_one_plus_x_over_x_deriv = ln_one_plus_x_over_x_deriv'[simplified]
+
 lemma ln_1_plus_x_over_x_mono:
   fixes x y :: real
   assumes "0 < x" "x \<le> y"
   shows "ln (1 + y) / y \<le> ln (1 + x) / x"
-  sorry
+proof (intro DERIV_nonpos_imp_nonincreasing[OF \<open>x \<le> y\<close>])
+  fix z assume "x \<le> z"
+
+  with \<open>0 < x\<close> have 
+    deriv: "((\<lambda>x. ln (1 + x) / x) has_real_derivative (z / (1 + z) - ln (1 + z)) / (z * z)) (at z)"
+    by (auto intro: ln_one_plus_x_over_x_deriv)
+
+  from \<open>x \<le> z\<close> \<open>0 < x\<close> have "z / (1 + z) - ln (1 + z) \<le> 0"
+    apply (auto)
+    by (smt (verit) divide_minus_left ln_diff_le ln_one)
+
+  then have "(z / (1 + z) - ln (1 + z)) / (z * z) \<le> 0"
+    by (auto intro: divide_nonpos_nonneg)
+
+  with deriv show "\<exists>y. ((\<lambda>a. ln (1 + a) / a) has_real_derivative y) (at z) \<and> y \<le> 0"
+    by blast
+qed
 
 record 'a adwords_state =
   matching :: "'a graph"
@@ -51,7 +79,8 @@ lemma
   using bipartite_edgeE bipartite_graph graph_non_empty by blast+
 
 abbreviation "total_bid_of M i \<equiv> \<Sum>e\<in>{e \<in> M. i \<in> e}. b e"
-abbreviation "matching_value M \<equiv> \<Sum>i\<in>L. min (B i) (total_bid_of M i)"
+abbreviation "charge_of M i \<equiv> min (B i) (total_bid_of M i)"
+abbreviation "matching_value M \<equiv> \<Sum>i\<in>L. charge_of M i"
 
 definition "max_value_matching M \<longleftrightarrow> one_sided_matching G M R \<and>
   (\<forall>M'. one_sided_matching G M' R \<longrightarrow> matching_value M' \<le> matching_value M)"
@@ -163,11 +192,40 @@ lemma subgraph_decomp_disjoint:
   using assms bipartite_subgraph[OF bipartite_graph \<open>M \<subseteq> G\<close>]
   by (auto elim: bipartite_edgeE)
 
+lemma sum_edges_eq_sum_vs:
+  assumes "M \<subseteq> G"
+  shows "(\<Sum>e\<in>M. f e) = (\<Sum>i\<in>L. sum f {e\<in>M. i \<in> e})"
+  using assms
+  by (subst subgraph_UNION_decomp[OF \<open>M \<subseteq> G\<close>], subst sum.UNION_disjoint)
+     (auto intro: finite_subset[where B = G] dest: subgraph_decomp_disjoint)
+
 lemma total_bid_of_nonneg[intro]:
   assumes "M \<subseteq> G"
   shows "total_bid_of M i \<ge> 0"
   using assms
   by (auto intro!: sum_nonneg dest!: bids_pos subsetD)
+
+lemma total_bid_of_insert:
+  assumes "{i,j} \<notin> M" "finite M"
+  shows "total_bid_of (insert {i,j} M) i = b {i,j} + total_bid_of M i"
+proof -
+  have *: "{e \<in> insert {i,j} M. i \<in> e} = insert {i,j} {e \<in> M. i \<in> e}"
+    by auto
+
+  from assms show ?thesis
+    by (subst *) simp
+qed
+
+lemma total_bid_of_insert':
+  assumes "i \<in> L" "i' \<in> L" "i \<noteq> i'" "{i,j} \<in> G"
+  shows "total_bid_of (insert {i,j} M) i' = total_bid_of M i'"
+proof -
+  from assms bipartite_graph have *: "{e \<in> insert {i,j} M. i' \<in> e} = {e \<in> M. i' \<in> e}"
+    by (auto dest: bipartite_edgeD)
+
+  from assms show ?thesis
+    by (subst *) simp
+qed
 
 lemma adwords_primal_sol_nonneg[intro]:
   assumes "M \<subseteq> G"
@@ -176,7 +234,7 @@ lemma adwords_primal_sol_nonneg[intro]:
   using total_bid_of_nonneg[OF assms] assms
   by (auto simp: Let_def intro!: divide_nonneg_nonneg[OF order_less_imp_le] dest: budgets_pos the_l_subset_in_LI)
 
-lemma primal_dot_bids_eq_value:
+lemma adwords_primal_dot_bids_eq_value:
   assumes "M \<subseteq> G"
   shows "bids_vec \<bullet> adwords_primal_sol M = matching_value M"
 proof -
@@ -192,8 +250,7 @@ proof -
              intro: to_nat_on_from_nat_into_less simp: countable_finite m_def to_nat_on_less_card)
 
   also from bipartite_graph \<open>M \<subseteq> G\<close> have "\<dots> = (\<Sum>i\<in>L. (\<Sum>e\<in>{e\<in>M. i \<in> e}. b e * (if total_bid_of M i \<le> B i then 1 else B i / total_bid_of M i)))"
-    apply (subst (3) subgraph_UNION_decomp[OF \<open>M \<subseteq> G\<close>], subst sum.UNION_disjoint)
-       apply (auto simp: finite_L intro: finite_subset[where B = G] dest: subgraph_decomp_disjoint intro!: sum.cong)
+    apply (auto simp add: sum_edges_eq_sum_vs Let_def intro!: sum.cong)
      apply (smt (verit, ccfv_threshold) Collect_cong bipartite_commute bipartite_eqI in_mono the_equality)+
     done
 
@@ -202,6 +259,14 @@ proof -
 
   finally show ?thesis .
 qed
+
+lemma primal_dot_bids_eq_sum_edges:
+  assumes "M \<subseteq> G"
+  shows "bids_vec \<bullet> primal_sol M = (\<Sum>e\<in>M. b e)"
+  unfolding scalar_prod_def primal_sol_def
+  using assms
+  by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = G_enum]
+           intro: to_nat_on_from_nat_into_less simp: m_def to_nat_on_less_card countable_finite)
 
 lemma subgraph_budget_constraint:
   assumes "M \<subseteq> G"
@@ -287,7 +352,7 @@ lemma matching_value_bound_by_feasible_dual:
   shows "matching_value M \<le> constraint_vec \<bullet> y"
 proof -
   from assms have "matching_value M = bids_vec \<bullet> adwords_primal_sol M"
-    by (auto simp: primal_dot_bids_eq_value dest: one_sided_matching_subgraphD)
+    by (auto simp: adwords_primal_dot_bids_eq_value dest: one_sided_matching_subgraphD)
 
   also from assms have "\<dots> \<le> constraint_vec \<bullet> y"
     by (auto intro!: weak_duality_theorem_nonneg_primal[where A = constraint_matrix] one_sided_matching_feasible 
@@ -319,7 +384,7 @@ definition adwords_step :: "'a adwords_state \<Rightarrow> 'a \<Rightarrow> 'a a
       then s
       else \<lparr> 
         matching = insert {i,j} (matching s),
-        charge = (charge s)(i := min (b {i, j}) (B i - (charge s) i)),
+        charge = (charge s)(i := charge s i + min (b {i, j}) (B i - (charge s) i)),
         x = (x s)(i := (x s) i * (1 + b {i, j} / B i) + b {i, j} / ((c-1) * B i)),
         z = (z s)(j := b {i, j} * (1 - (x s) i))
       \<rparr>
@@ -344,8 +409,7 @@ lemma adwords_step_cases[case_names no_neighbor j_matched no_budget new_match]:
   assumes "{i. {i,j} \<in> G} = {} \<Longrightarrow> P"
   assumes "j \<in> Vs (matching s) \<Longrightarrow> P"
   assumes "x s i \<ge> 1 \<Longrightarrow> P"
-  assumes "\<lbrakk> {i. {i,j} \<in> G} \<noteq> {}; j \<notin> Vs (matching s);
-    i \<in> {i. {i,j} \<in> G}; x s i < 1;
+  assumes "\<lbrakk> j \<notin> Vs (matching s); {i,j} \<in> G; x s i < 1; {i. {i,j} \<in> G} \<noteq> {}; \<comment> \<open>keep this redundant assumption for simplification\<close>
     \<not>(\<exists>i'\<in>{i. {i,j} \<in> G}. b {i',j} * (1 - x s i') > b {i,j} * (1 - x s i)) \<rbrakk> \<Longrightarrow> P"
   shows P
 proof -
@@ -365,22 +429,43 @@ proof -
   qed (use assms in auto)
 qed
 
+lemma adwords_step_casesR[consumes 1, case_names no_neighbor j_matched no_budget new_match]:
+  fixes j s
+  defines "i \<equiv> arg_max_on (\<lambda>i. b {i,j} * (1 - x s i)) {i. {i,j} \<in> G}"
+  assumes "j \<in> R"
+  assumes "{i. {i,j} \<in> G} = {} \<Longrightarrow> P"
+  assumes "j \<in> Vs (matching s) \<Longrightarrow> P"
+  assumes "x s i \<ge> 1 \<Longrightarrow> P"
+  assumes "\<lbrakk> j \<notin> Vs (matching s); {i,j} \<in> G; x s i < 1; {i. {i,j} \<in> G} \<noteq> {}; \<comment> \<open>keep this redundant assumption for simplification\<close>
+    i \<in> L;
+    \<not>(\<exists>i'\<in>{i. {i,j} \<in> G}. b {i',j} * (1 - x s i') > b {i,j} * (1 - x s i)) \<rbrakk> \<Longrightarrow> P"
+  shows P
+proof (cases j rule: adwords_step_cases[where s = s])
+  case new_match
+  with bipartite_graph \<open>j \<in> R\<close> have "i \<in> L"
+    unfolding i_def
+    by (auto dest: bipartite_edgeD)
+
+  with new_match assms show ?thesis
+    by blast
+qed (use assms in auto)
+
 lemma finite_bid_ratios:
   "finite {b {i, j} / B i |i j. {i, j} \<in> G \<and> i \<in> L \<and> j \<in> R}"
   by (auto intro!: finite_image_set2' intro: finite_subset[where B = "Vs G \<times> Vs G"] dest: edges_are_Vs)
 
+lemma bid_ratios_non_empty: "{b {i, j} / B i |i j. {i, j} \<in> G \<and> i \<in> L \<and> j \<in> R} \<noteq> {}"
+  using graph_non_empty bipartite_graph
+  by auto (metis bipartite_edgeE)
+
+lemma bid_ratio_pos: "i \<in> L \<Longrightarrow> {i,j} \<in> G \<Longrightarrow> b {i,j} / B i > 0"
+  by (auto intro: divide_pos_pos budgets_pos bids_pos)
+
 lemma R_max_pos: "0 < R_max"
   unfolding R_max_def
   apply (subst Max_gr_iff)
-  apply (rule finite_bid_ratios)
-  subgoal
-    using bipartite_graph graph_non_empty
-    apply auto
-    by (metis bipartite_edgeE)
-  subgoal
-    using graph_non_empty
-    apply (auto)
-    by (metis bids_pos bipartite_edgeE bipartite_graph budgets_pos divide_pos_pos)
+    apply (intro finite_bid_ratios bid_ratios_non_empty)+
+  using bid_ratios_non_empty bids_pos budgets_pos divide_pos_pos apply blast
   done
 
 lemma R_max_ge:
@@ -434,20 +519,25 @@ lemma adwords_subgraph:
   by (induction js arbitrary: s)
      (auto simp: adwords_Cons dest: adwords_step_subgraph)
 
+lemma finite_adwords_step:
+  assumes "finite (matching s)"
+  shows "finite (matching (adwords_step s j))"
+  using assms
+  by (cases j rule: adwords_step_cases[where s = s])
+     (auto simp: adwords_step_def Let_def)
+
 lemma adwords_step_x_mono:
   assumes "0 \<le> x s i"
   assumes "j \<in> R"
   shows "x s i \<le> x (adwords_step s j) i"
-proof (cases j rule: adwords_step_cases[where s = s])
+  using \<open>j \<in> R\<close>
+proof (cases j rule: adwords_step_casesR[where s = s])
   case new_match
   let ?i' = "arg_max_on (\<lambda>i. b {i,j} * (1 - x s i)) {i. {i,j} \<in> G}"
 
   show ?thesis
   proof (cases "?i' = i")
     case True
-
-    from new_match bipartite_graph \<open>j \<in> R\<close> have "?i' \<in> L"
-      by (auto dest: bipartite_edgeD)
 
     with new_match \<open>0 \<le> x s i\<close> have "x s i \<le> x s i * (1 + b {i, j} / B i)"
       by (auto simp: mult_le_cancel_left1 True dest!: budgets_pos bids_pos)
@@ -511,28 +601,14 @@ lemma adwords_z_unchanged:
   by (induction js arbitrary: s)
      (auto simp: adwords_Cons dest: adwords_step_z_unchanged)
 
-lemma arg_max_in_L:
-  fixes f :: "'a \<Rightarrow> 'b::order"
-  assumes "j \<in> R"
-  assumes "{i. {i,j} \<in> G} \<noteq> {}"
-  shows "arg_max_on f {i. {i,j} \<in> G} \<in> L"
-proof -
-  from assms have "arg_max_on f {i. {i,j} \<in> G} \<in> {i. {i,j} \<in> G}"
-    by (intro arg_max_if_finite)
-       (auto intro: finite_subset[where B = "Vs G"] dest: edges_are_Vs)
-
-  with bipartite_graph \<open>j \<in> R\<close> show ?thesis
-    by (auto dest: bipartite_edgeD)
-qed
-
 lemma unmatched_R_in_adwords_step_if:
   assumes "j \<in> R" "j' \<in> R"
   assumes "j \<noteq> j'"
   assumes "j \<notin> Vs (matching s)"
   shows "j \<notin> Vs (matching (adwords_step s j'))"
-  using assms bipartite_graph
-  by (cases j rule: adwords_step_cases[where s = s])
-     (auto simp: adwords_step_def Let_def vs_insert dest: arg_max_in_L)
+  using \<open>j' \<in> R\<close>
+  by (cases j' rule: adwords_step_casesR[where s = s])
+     (use assms in \<open>auto simp: adwords_step_def Let_def vs_insert\<close>)
 
 lemma unmatched_R_in_adwords_if:
   assumes "j \<notin> set js" "j \<in> R"
@@ -700,12 +776,10 @@ lemma dual_primal_times_adwords_step:
   assumes "z s j = 0"
   assumes "constraint_vec \<bullet> dual_sol s * (1 - 1 / c) = bids_vec \<bullet> primal_sol (matching s)"
   shows "constraint_vec \<bullet> dual_sol (adwords_step s j) * (1 - 1 / c) = bids_vec \<bullet> primal_sol (matching (adwords_step s j))"
-proof (cases j rule: adwords_step_cases[where s = s])
+  using \<open>j \<in> R\<close>
+proof (cases j rule: adwords_step_casesR[where s = s])
   case new_match
   let ?i = "arg_max_on (\<lambda>i. b {i, j} * (1 - x s i)) {i. {i, j} \<in> G}"
-
-  from new_match bipartite_graph \<open>j \<in> R\<close> have "?i \<in> L"
-    by (auto dest: bipartite_edgeD)
 
   from new_match 
   have matching_insert: "matching (adwords_step s j) = insert {?i,j} (matching s)"
@@ -876,6 +950,7 @@ proof (cases j rule: adwords_step_cases[where s = s])
   qed
 qed (use assms in \<open>simp_all add: adwords_step_def\<close>)
 
+\<comment> \<open>TODO remove\<close>
 lemma primal_almost_feasible_adwords:
   assumes "i \<in> L"
   assumes "set js \<subseteq> R"
@@ -895,6 +970,150 @@ proof (induction js arbitrary: s)
   with Cons step_le show ?case
     by (auto simp: adwords_Cons)
 qed simp
+
+lemma no_charge_over_budget_adwords_step:
+  assumes "i \<in> L" "j \<in> R"
+  assumes total_bid_dual_bound: "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
+  assumes "total_bid_of (matching s) i > B i"
+  shows "{e \<in> matching (adwords_step s j). i \<in> e} = {e \<in> matching s. i \<in> e}"
+  using \<open>j \<in> R\<close>
+proof (cases j rule: adwords_step_casesR[where s = s])
+  case new_match
+  let ?i' = "arg_max_on (\<lambda>i. b {i, j} * (1 - x s i)) {i. {i, j} \<in> G}"
+  
+  from \<open>?i' \<in> L\<close> \<open>x s ?i' < 1\<close> have "total_bid_of (matching s) ?i' < B ?i'"
+    apply (auto dest!: total_bid_dual_bound)
+    by (smt (verit) budgets_pos c_gt_1 le_divide_eq_1_pos new_match(5) powr_mono powr_one)
+
+  with \<open>total_bid_of (matching s) i > B i\<close> have "i \<noteq> ?i'"
+    by auto
+
+  from new_match have "matching (adwords_step s j) = insert {?i',j} (matching s)"
+    by (simp add: adwords_step_def Let_def)
+
+  with \<open>i \<noteq> ?i'\<close> \<open>i \<in> L\<close> \<open>j \<in> R\<close> show ?thesis
+    by auto
+qed (use assms in \<open>simp_all add: adwords_step_def\<close>)
+
+lemma max_over_budget_adwords_step:
+  assumes "i \<in> L" "j \<in> R"
+  assumes finite_M: "finite (matching s)"
+  assumes under_budget_before: "total_bid_of (matching s) i \<le> B i"
+  assumes over_budget_after: "total_bid_of (matching (adwords_step s j)) i > B i"
+  shows "total_bid_of (matching (adwords_step s j)) i \<le> B i + Max {b e |e. e \<in> matching (adwords_step s j) \<and> i \<in> e}"
+  using \<open>j \<in> R\<close>
+proof (cases j rule: adwords_step_casesR[where s = s])
+  case new_match
+  let ?i' = "arg_max_on (\<lambda>i. b {i, j} * (1 - x s i)) {i. {i, j} \<in> G}"
+
+  from new_match have matching_insert: "matching (adwords_step s j) = insert {?i',j} (matching s)"
+    by (simp add: adwords_step_def Let_def)
+
+  have [simp]: "?i' = i"
+  proof (rule ccontr)
+    assume "?i' \<noteq> i"
+
+    with \<open>i \<in> L\<close> \<open>?i' \<in> L\<close> \<open>{?i',j} \<in> G\<close> have "total_bid_of (matching (adwords_step s j)) i = total_bid_of (matching s) i"
+      by (subst matching_insert, subst total_bid_of_insert') auto
+
+    with under_budget_before over_budget_after show False
+      by linarith
+  qed
+
+  from finite_M \<open>j \<notin> Vs (matching s)\<close>
+  have "total_bid_of (matching (adwords_step s j)) i = b {i,j} + total_bid_of (matching s) i"
+    by (subst matching_insert, simp only: \<open>?i' = i\<close>, subst total_bid_of_insert)
+       (auto dest: edges_are_Vs)
+
+  also from finite_M under_budget_before have "\<dots> \<le> Max {b e |e. e \<in> matching (adwords_step s j) \<and> i \<in> e} + B i"
+    by (auto intro!: add_mono Max_ge intro: finite_image_set simp: matching_insert)
+
+  finally show ?thesis
+    by linarith
+qed (use assms in \<open>auto simp: adwords_step_def split: if_splits\<close>)
+
+lemma no_charge_over_budget_adwords:
+  assumes "i \<in> L" "set js \<subseteq> R"
+  assumes "matching s \<subseteq> G"
+  assumes "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
+  assumes "total_bid_of (matching s) i > B i"
+  shows "{e \<in> matching (adwords' s js). i \<in> e} = {e \<in> matching s. i \<in> e}"
+  using assms
+proof (induction js arbitrary: s)
+  case (Cons j js)
+
+  then have edges_step: "{e \<in> matching (adwords_step s j). i \<in> e} = {e \<in> matching s. i \<in> e}"
+    by (intro no_charge_over_budget_adwords_step) auto
+
+  from Cons.prems have "{e \<in> matching (adwords' s (j#js)). i \<in> e} = {e \<in> matching (adwords_step s j). i \<in> e}"
+    by (subst adwords_Cons, intro Cons.IH primal_almost_feasible_adwords_step adwords_step_subgraph)
+       (auto simp: edges_step)
+
+  also from Cons.prems have "\<dots> = {e \<in> matching s. i \<in> e}"
+    by (intro no_charge_over_budget_adwords_step)  auto
+
+  finally show ?case .
+qed simp
+
+lemma max_over_budget_adwords':
+  assumes "i \<in> L" "set js \<subseteq> R"
+  assumes "matching s \<subseteq> G"
+  assumes "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
+  assumes "total_bid_of (matching s) i > B i \<Longrightarrow> total_bid_of (matching s) i \<le> B i + Max {b e |e. e \<in> matching s \<and> i \<in> e}"
+  assumes "total_bid_of (matching (adwords' s js)) i > B i"
+  shows "total_bid_of (matching (adwords' s js)) i \<le> B i + Max {b e |e. e \<in> matching (adwords' s js) \<and> i \<in> e}"
+  using assms
+proof (induction js arbitrary: s)
+  case (Cons j js)
+  consider (over_budget_before) "total_bid_of (matching s) i > B i" | (under_budget_before) "total_bid_of (matching s) i \<le> B i"
+    by linarith
+
+  then show ?case
+  proof cases
+    case over_budget_before
+
+    with Cons.prems have edges_eq: "{e \<in> matching (adwords' s (j#js)). i \<in> e} = {e \<in> matching s. i \<in> e}"
+      by (intro no_charge_over_budget_adwords) auto
+
+    then have "total_bid_of (matching (adwords' s (j#js))) i = total_bid_of (matching s) i"
+      by simp
+
+    also from Cons.prems over_budget_before have "\<dots> \<le> B i + Max {b e |e. e \<in> matching s \<and> i \<in> e}"
+      by blast
+
+    also from edges_eq have "\<dots> = B i + Max {b e |e. e \<in> matching (adwords' s (j#js)) \<and> i \<in> e}"
+      by (metis (mono_tags, lifting) mem_Collect_eq)
+
+    finally show ?thesis .
+  next
+    case under_budget_before
+    consider (over_budget_after_step) "total_bid_of (matching (adwords_step s j)) i > B i" |
+      (under_budget_after_step) "total_bid_of (matching (adwords_step s j)) i \<le> B i"
+      by linarith
+
+    then show ?thesis
+    proof cases
+      case over_budget_after_step
+
+      with Cons.prems under_budget_before show ?thesis
+        by (simp only: adwords_Cons, intro Cons.IH adwords_step_subgraph primal_almost_feasible_adwords_step max_over_budget_adwords_step)
+           (auto intro: finite_subset[where B = G])
+    next
+      case under_budget_after_step
+      
+      with Cons.prems show ?thesis
+        by (simp only: adwords_Cons, intro Cons.IH adwords_step_subgraph primal_almost_feasible_adwords_step)
+           auto
+    qed
+  qed
+qed simp
+
+lemma max_over_budget_adwords:
+  assumes "i \<in> L" "set js \<subseteq> R"
+  assumes "total_bid_of (matching (adwords js)) i > B i"
+  shows "total_bid_of (matching (adwords js)) i \<le> B i + Max {b e |e. e \<in> matching (adwords js) \<and> i \<in> e}"
+  using assms c_gt_1
+  by (auto intro!: max_over_budget_adwords' dest: budgets_pos)
 
 end
 
