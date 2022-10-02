@@ -56,7 +56,6 @@ qed
 
 record 'a adwords_state =
   matching :: "'a graph"
-  charge :: "'a \<Rightarrow> real"
   x :: "'a \<Rightarrow> real"
   z :: "'a \<Rightarrow> real"
 
@@ -69,6 +68,7 @@ locale adwords_lp = bipartite_matching_lp +
 
   assumes budgets_pos: "\<And>i. i \<in> L \<Longrightarrow> B i > 0"
   assumes bids_pos: "\<And>e. e \<in> G \<Longrightarrow> b e > 0"
+  assumes bids_le_budgets: "\<And>i j. {i,j} \<in> G \<Longrightarrow> i \<in> L \<Longrightarrow> b {i,j} \<le> B i"
 
   assumes graph_non_empty[intro]: "G \<noteq> {}"
 begin
@@ -80,7 +80,7 @@ lemma
 
 abbreviation "total_bid_of M i \<equiv> \<Sum>e\<in>{e \<in> M. i \<in> e}. b e"
 abbreviation "charge_of M i \<equiv> min (B i) (total_bid_of M i)"
-abbreviation "matching_value M \<equiv> \<Sum>i\<in>L. charge_of M i"
+definition "matching_value M \<equiv> \<Sum>i\<in>L. charge_of M i"
 
 definition "max_value_matching M \<longleftrightarrow> one_sided_matching G M R \<and>
   (\<forall>M'. one_sided_matching G M' R \<longrightarrow> matching_value M' \<le> matching_value M)"
@@ -121,8 +121,96 @@ definition online_dual :: "'a adwords_state \<Rightarrow> real vec" where
 definition dual_sol :: "'a adwords_state \<Rightarrow> real vec" where
   "dual_sol s \<equiv> offline_dual s @\<^sub>v online_dual s"
 
+lemma total_bid_of_nonneg[intro]:
+  assumes "M \<subseteq> G"
+  shows "total_bid_of M i \<ge> 0"
+  using assms
+  by (auto intro!: sum_nonneg dest!: bids_pos subsetD)
+
+lemma total_bid_of_insert:
+  assumes "{i,j} \<notin> M" "finite M"
+  shows "total_bid_of (insert {i,j} M) i = b {i,j} + total_bid_of M i"
+proof -
+  have *: "{e \<in> insert {i,j} M. i \<in> e} = insert {i,j} {e \<in> M. i \<in> e}"
+    by auto
+
+  from assms show ?thesis
+    by (subst *) simp
+qed
+
+lemma total_bid_of_insert':
+  assumes "i \<in> L" "i' \<in> L" "i \<noteq> i'" "{i,j} \<in> G"
+  shows "total_bid_of (insert {i,j} M) i' = total_bid_of M i'"
+proof -
+  from assms bipartite_graph have *: "{e \<in> insert {i,j} M. i' \<in> e} = {e \<in> M. i' \<in> e}"
+    by (auto dest: bipartite_edgeD)
+
+  from assms show ?thesis
+    by (subst *) simp
+qed
+
 lemma max_value_matchingD: "max_value_matching M \<Longrightarrow> one_sided_matching G M R"
   unfolding max_value_matching_def by blast
+
+lemma matching_value_empty[simp]: "matching_value {} = 0"
+  unfolding matching_value_def
+  by (auto intro!: sum.neutral intro: min_absorb2 dest: budgets_pos)
+
+lemma matching_value_nonneg: "M \<subseteq> G \<Longrightarrow> matching_value M \<ge> 0"
+  unfolding matching_value_def
+  by (force intro!: sum_nonneg dest!: budgets_pos bids_pos)
+
+lemma matching_value_gt_0: "M \<subseteq> G \<Longrightarrow> M \<noteq> {} \<Longrightarrow> matching_value M > 0"
+proof -
+  assume "M \<subseteq> G" "M \<noteq> {}"
+  then obtain e where e: "e \<in> M" "e \<in> G" by blast
+
+  with bipartite_graph obtain i j where ij: "e = {i,j}" "i \<in> L" "j \<in> R"
+    by (auto elim: bipartite_edgeE)
+
+  from \<open>M \<subseteq> G\<close> have "finite M"
+    by (auto intro: finite_subset)
+
+  show "matching_value M > 0"
+    unfolding matching_value_def
+    by (rule sum_pos2[where i = i])
+       (use e ij \<open>M \<subseteq> G\<close> \<open>finite M\<close> in \<open>auto dest!: bids_pos budgets_pos intro!: sum_pos2[where i = e]\<close>)
+qed
+
+lemma matching_value_zero_iff: "M \<subseteq> G \<Longrightarrow> matching_value M = 0 \<longleftrightarrow> M = {}"
+  by (auto dest: matching_value_gt_0)
+
+lemma max_value_matching_non_empty: "max_value_matching {} \<Longrightarrow> False"
+proof -
+  assume "max_value_matching {}"
+  from graph_non_empty obtain e where "e \<in> G"
+    by blast
+
+  with bipartite_graph obtain i j where ij: "e = {i,j}" "i \<in> L" "j \<in> R"
+    by (auto elim: bipartite_edgeE)
+
+  then have "j' \<in> R \<Longrightarrow> {e. e = {i, j} \<and> j' \<in> e} = (if j' = j then {{i,j}} else {})" for j'
+    by auto
+
+  with \<open>e \<in> G\<close> have "one_sided_matching G {e} R"
+    by (intro one_sided_matchingI)
+       (simp_all add: ij)
+
+  from \<open>j \<in> R\<close> have *: "i' \<in> L \<Longrightarrow> {e. e = {i, j} \<and> i' \<in> e} = (if i' = i then {{i,j}} else {})" for i'
+    by auto
+
+  have "matching_value {e} > 0"
+    unfolding matching_value_def
+    by (rule sum_pos2[where i = i])
+       (use ij \<open>e \<in> G\<close> in \<open>auto dest: budgets_pos bids_pos simp: *\<close>)
+
+  with \<open>max_value_matching {}\<close> \<open>one_sided_matching G {e} R\<close> show False
+    unfolding max_value_matching_def
+    by auto
+qed
+
+lemma max_value_matching_pos_value: "max_value_matching M \<Longrightarrow> matching_value M > 0"
+  by (metis matching_value_gt_0 max_value_matching_def max_value_matching_non_empty one_sided_matching_subgraphD)
 
 lemma 
   shows dim_row_budget_constraint_mat[simp]: "dim_row budget_constraint_mat = card L"
@@ -175,7 +263,7 @@ lemma
   by (auto simp: n_sum)
 
 lemma dual_sol_init[simp]:
-  "dual_sol \<lparr> matching = M, charge = f, x = \<lambda>_. 0, z = \<lambda>_. 0 \<rparr> = 0\<^sub>v n"
+  "dual_sol \<lparr> matching = M, x = \<lambda>_. 0, z = \<lambda>_. 0 \<rparr> = 0\<^sub>v n"
   unfolding dual_sol_def offline_dual_def online_dual_def append_vec_def
   by (auto simp: Let_def n_sum)
 
@@ -198,34 +286,6 @@ lemma sum_edges_eq_sum_vs:
   using assms
   by (subst subgraph_UNION_decomp[OF \<open>M \<subseteq> G\<close>], subst sum.UNION_disjoint)
      (auto intro: finite_subset[where B = G] dest: subgraph_decomp_disjoint)
-
-lemma total_bid_of_nonneg[intro]:
-  assumes "M \<subseteq> G"
-  shows "total_bid_of M i \<ge> 0"
-  using assms
-  by (auto intro!: sum_nonneg dest!: bids_pos subsetD)
-
-lemma total_bid_of_insert:
-  assumes "{i,j} \<notin> M" "finite M"
-  shows "total_bid_of (insert {i,j} M) i = b {i,j} + total_bid_of M i"
-proof -
-  have *: "{e \<in> insert {i,j} M. i \<in> e} = insert {i,j} {e \<in> M. i \<in> e}"
-    by auto
-
-  from assms show ?thesis
-    by (subst *) simp
-qed
-
-lemma total_bid_of_insert':
-  assumes "i \<in> L" "i' \<in> L" "i \<noteq> i'" "{i,j} \<in> G"
-  shows "total_bid_of (insert {i,j} M) i' = total_bid_of M i'"
-proof -
-  from assms bipartite_graph have *: "{e \<in> insert {i,j} M. i' \<in> e} = {e \<in> M. i' \<in> e}"
-    by (auto dest: bipartite_edgeD)
-
-  from assms show ?thesis
-    by (subst *) simp
-qed
 
 lemma adwords_primal_sol_nonneg[intro]:
   assumes "M \<subseteq> G"
@@ -255,6 +315,7 @@ proof -
     done
 
   also have "\<dots> = matching_value M"
+    unfolding matching_value_def
     by (auto intro!: sum.cong simp flip: sum_distrib_right sum_divide_distrib dest: budgets_pos)
 
   finally show ?thesis .
@@ -341,7 +402,6 @@ lemma one_sided_matching_feasible:
      (use assms in \<open>auto intro: subgraph_budget_constraint one_sided_matching_matching_constraint
                          dest: one_sided_matching_subgraphD\<close>)
 
-
 lemma matching_value_bound_by_feasible_dual:
   fixes y :: "real vec"
   assumes "one_sided_matching G M R"
@@ -384,14 +444,13 @@ definition adwords_step :: "'a adwords_state \<Rightarrow> 'a \<Rightarrow> 'a a
       then s
       else \<lparr> 
         matching = insert {i,j} (matching s),
-        charge = (charge s)(i := charge s i + min (b {i, j}) (B i - (charge s) i)),
         x = (x s)(i := (x s) i * (1 + b {i, j} / B i) + b {i, j} / ((c-1) * B i)),
         z = (z s)(j := b {i, j} * (1 - (x s) i))
       \<rparr>
     else s"
 
 definition "adwords' s \<equiv> foldl adwords_step s"
-abbreviation "adwords \<equiv> adwords' \<lparr> matching = {}, charge = \<lambda>_. 0, x = \<lambda>_. 0, z = \<lambda>_. 0 \<rparr>"
+abbreviation "adwords \<equiv> adwords' \<lparr> matching = {}, x = \<lambda>_. 0, z = \<lambda>_. 0 \<rparr>"
 
 lemma adwords_Nil[simp]: "adwords' s [] = s"
   unfolding adwords'_def by simp
@@ -476,6 +535,11 @@ lemma R_max_ge:
   using assms bipartite_graph
   by (auto intro: Max_ge finite_bid_ratios dest: bipartite_edgeD)
 
+lemma R_max_le_1:
+  shows "R_max \<le> 1"
+  unfolding R_max_def
+  by (auto intro!: Max.boundedI finite_bid_ratios bid_ratios_non_empty mult_imp_div_pos_le budgets_pos bids_le_budgets)
+
 lemma c_gt_1: "1 < c"
   unfolding c_def
   using R_max_pos
@@ -504,6 +568,19 @@ proof -
     using ratio_pos
     by (simp add: *)
 qed
+
+lemma budget_over_budget_plus_bid_ge:
+  assumes "{i,j} \<in> G" "i \<in> L" "j \<in> R"
+  shows "B i / (B i + b {i,j}) \<ge> 1 - R_max"
+proof (intro mult_imp_le_div_pos add_pos_pos)
+  from assms have "R_max * B i \<ge> b {i,j}"
+    by (subst pos_divide_le_eq[symmetric])
+       (auto intro: R_max_ge budgets_pos)
+
+  with assms R_max_pos show "B i \<ge> (1 - R_max) * (B i + b {i,j})"
+    using linordered_semiring_strict_class.mult_pos_pos
+    by (fastforce simp: distrib_left left_diff_distrib dest!: bids_pos)
+qed (use assms in \<open>auto intro: budgets_pos bids_pos\<close>)
 
 lemma adwords_step_subgraph:
   assumes "matching s \<subseteq> G"
@@ -950,27 +1027,6 @@ proof (cases j rule: adwords_step_cases[where s = s])
   qed
 qed (use assms in \<open>simp_all add: adwords_step_def\<close>)
 
-\<comment> \<open>TODO remove\<close>
-lemma primal_almost_feasible_adwords:
-  assumes "i \<in> L"
-  assumes "set js \<subseteq> R"
-  assumes "matching s \<subseteq> G"
-  assumes "1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
-  shows "1/(c-1) * (c powr (total_bid_of (matching (adwords' s js)) i / B i) - 1) \<le> x (adwords' s js) i"
-  using assms
-proof (induction js arbitrary: s)
-  case (Cons j js)
-
-  from Cons.prems have step_le: "1/(c-1) * (c powr ((\<Sum>e\<in>{e \<in> matching (adwords_step s j). i \<in> e}. b e) / B i) - 1) \<le> x (adwords_step s j) i"
-    by (intro primal_almost_feasible_adwords_step) auto
-
-  from Cons.prems have "matching (adwords_step s j) \<subseteq> G"
-    by (auto dest: adwords_step_subgraph)
-
-  with Cons step_le show ?case
-    by (auto simp: adwords_Cons)
-qed simp
-
 lemma no_charge_over_budget_adwords_step:
   assumes "i \<in> L" "j \<in> R"
   assumes total_bid_dual_bound: "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
@@ -1115,6 +1171,85 @@ lemma max_over_budget_adwords:
   using assms c_gt_1
   by (auto intro!: max_over_budget_adwords' dest: budgets_pos)
 
+lemma adwords_charge_of_ge_total_bid_of:
+  assumes "i \<in> L" "set js \<subseteq> R"
+  shows "charge_of (matching (adwords js)) i \<ge> (1 - R_max) * (total_bid_of (matching (adwords js)) i)"
+proof (cases "total_bid_of (matching (adwords js)) i > B i")
+  case True
+  with \<open>i \<in> L\<close> have match: "{e. e \<in> matching (adwords js) \<and> i \<in> e} \<noteq> {}"
+    using budgets_pos by fastforce
+
+  with True \<open>i \<in> L\<close> have "finite {b e |e. e \<in> matching (adwords js) \<and> i \<in> e}" "{b e |e. e \<in> matching (adwords js) \<and> i \<in> e} \<noteq> {}"
+     apply (auto intro!: finite_image_set)
+    by (smt (verit, ccfv_threshold) True assms(1) budgets_pos sum.infinite)
+
+  then obtain e where e: "e \<in> matching (adwords js)" "i \<in> e" and [simp]: "Max {b e |e. e \<in> matching (adwords js) \<and> i \<in> e} = b e"
+    using Max_in by auto
+
+  have "matching (adwords js) \<subseteq> G"
+    by (auto intro!: adwords_subgraph)
+
+  with bipartite_graph have "bipartite (matching (adwords js)) L R"
+    by (auto intro: bipartite_subgraph)
+
+  with e \<open>i \<in> L\<close> obtain j where [simp]: "e = {i,j}" "j \<in> R"
+    by (auto elim: bipartite_edgeE)
+
+  from \<open>i \<in> L\<close> e \<open>matching (adwords js) \<subseteq> G\<close> have "total_bid_of (matching (adwords js)) i * (1 - R_max) \<le>
+    total_bid_of (matching (adwords js)) i * (B i / (B i + Max {b e |e. e \<in> matching (adwords js) \<and> i \<in> e}))"
+    by (intro mult_left_mono)
+       (auto intro: budget_over_budget_plus_bid_ge)
+
+  also from True assms have "\<dots> \<le> B i"
+    apply (auto dest!: max_over_budget_adwords simp: )
+    by (smt (verit, ccfv_SIG) assms(1) budgets_pos frac_less2 linordered_semiring_strict_class.mult_pos_pos nonzero_mult_div_cancel_left)
+
+  also from True have "\<dots> = charge_of (matching (adwords js)) i"
+    by simp
+
+  finally show ?thesis
+    by (simp add: mult.commute)
+next
+  case False
+
+  with assms R_max_pos show ?thesis
+    by (auto intro!: mult_right_le adwords_subgraph)
+qed
+
+lemma adwords_matching_value_ge:
+  assumes "set js \<subseteq> R"
+  shows "matching_value (matching (adwords js)) \<ge> (1 - R_max) * (bids_vec \<bullet> primal_sol (matching (adwords js)))"
+proof -
+  have subgraph[intro]: "matching (adwords js) \<subseteq> G"
+    by (auto intro!: adwords_subgraph)
+
+  have "(1 - R_max) * (bids_vec \<bullet> primal_sol (matching (adwords js))) =
+    (\<Sum>i\<in>L. (1 - R_max) * total_bid_of (matching (adwords js)) i)"
+    by (auto simp: sum_edges_eq_sum_vs[OF subgraph] primal_dot_bids_eq_sum_edges[OF subgraph] sum_distrib_left)
+
+  also from assms have "\<dots> \<le> (\<Sum>i\<in>L. charge_of (matching (adwords js)) i)"
+    by (auto intro: sum_mono adwords_charge_of_ge_total_bid_of)
+
+  finally show ?thesis 
+    unfolding matching_value_def .
+qed
+
+theorem adwords_competitive_ratio:
+  assumes "max_value_matching M"
+  shows "matching_value (matching (adwords \<pi>)) / matching_value M \<ge> (1 - 1/c) * (1 - R_max)"
+  using assms
+proof (intro mult_imp_le_div_pos max_value_matching_pos_value)
+  from assms c_gt_1 R_max_le_1 have "(1 - 1 / c) * (1 - R_max) * matching_value M \<le> (1 - 1/c) * (1 - R_max) * (constraint_vec \<bullet> (dual_sol (adwords \<pi>)))"
+    by (auto intro!: mult_left_mono max_value_matching_bound_by_feasible_dual dual_feasible dual_nonneg)
+
+  also have "\<dots> = (1 - R_max) * (bids_vec \<bullet> primal_sol (matching (adwords \<pi>)))"
+    by (simp flip: dual_primal_times_adwords)
+
+  also from perm have "\<dots> \<le> matching_value (matching (adwords \<pi>))"
+    by (auto intro: adwords_matching_value_ge dest: permutations_of_setD)
+
+  finally show "(1 - 1 / c) * (1 - R_max) * matching_value M \<le> matching_value (matching (adwords \<pi>))" .
+qed
 end
 
 end
