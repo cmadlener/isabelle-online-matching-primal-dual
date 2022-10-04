@@ -103,7 +103,7 @@ lemma bipartite_FalseD[dest]:  "x \<in> L \<Longrightarrow> x \<in> R \<Longrigh
   by (auto dest: bipartite_disjointD)
 
 definition "n \<equiv> card (Vs G)"
-definition "m \<equiv> card G"
+abbreviation "m \<equiv> card G"
 
 definition Vs_enum :: "'a \<Rightarrow> nat" where
   "Vs_enum x \<equiv> if x \<in> L then to_nat_on L x else to_nat_on R x + card L"
@@ -225,7 +225,6 @@ lemma Vs_enum_inv_rightE:
   by (metis Vs_enum_inv_def add.right_neutral card.empty from_nat_into n_sum)
 
 lemma G_enum_less_m: "e \<in> G \<Longrightarrow> G_enum e < m"
-  unfolding m_def
   using finite_E
   by (auto intro: to_nat_on_less_card)
 
@@ -233,7 +232,6 @@ lemma G_not_empty_if:
   assumes "i < m"
   shows "G \<noteq> {}"
   using assms
-  unfolding m_def
   by fastforce
 
 lemma from_nat_into_G_E_aux:
@@ -282,8 +280,14 @@ lemma the_l_subset_in_LI:
   using assms
   by (auto elim: the_l_subsetE)
 
+lemma index_set_Int_is_doubleton:
+  assumes "i \<in> L" "j \<in> R"
+  shows "{0..<n} \<inter> {k. Vs_enum_inv k = i \<or> Vs_enum_inv k = j} = {Vs_enum i, Vs_enum j}"
+  using assms
+  by (auto intro: Vs_enum_less_n_L Vs_enum_less_n_R)
+
 lemma primal_dot_One_card: "M \<subseteq> G \<Longrightarrow> 1\<^sub>v m \<bullet> primal_sol M = card M"
-  by (auto simp: scalar_prod_def m_def primal_sol_def countable_finite in_mono
+  by (auto simp: scalar_prod_def primal_sol_def countable_finite in_mono
            intro!: bij_betw_same_card[where f = "from_nat_into G"] bij_betwI[where g = G_enum] 
                    to_nat_on_less_card to_nat_on_from_nat_into_less)
 
@@ -317,7 +321,7 @@ proof (intro conjI allI impI, simp_all, rule ccontr, simp add: not_le)
     by (auto dest: matching_unique_match)
 
   with ei1 ei2 \<open>ei1 \<noteq> ei2\<close> show False
-    by (auto dest!: to_nat_on_from_nat_into_less[OF finite_E] simp: m_def)
+    by (auto dest!: to_nat_on_from_nat_into_less[OF finite_E])
 qed
 
 lemma feasible_matching:

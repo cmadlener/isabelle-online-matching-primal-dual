@@ -2,13 +2,13 @@ theory Ranking_Order_Probabilistic
   imports
     Ranking_Order
     Order_Relations_From_Priorities
-    Measure_Misc
+    Bipartite_Vertex_Priorities
 begin
 
 hide_type Finite_Cartesian_Product.vec
 hide_const Finite_Cartesian_Product.vec Finite_Cartesian_Product.vec.vec_nth
 
-locale wf_ranking_order_prob = bipartite_matching_lp +
+locale wf_ranking_order_prob = bipartite_vertex_priorities +
   fixes \<pi> :: "'a list"
   fixes g :: "real \<Rightarrow> real" and F :: real
 
@@ -23,30 +23,6 @@ locale wf_ranking_order_prob = bipartite_matching_lp +
 
   assumes F_gt_0: "0 < F"
 begin
-
-abbreviation "U \<equiv> uniform_measure lborel {0..1::real}"
-abbreviation "M\<^sub>Y \<equiv> \<Pi>\<^sub>M i \<in> L. U"
-
-sublocale component_prob_space: prob_space U
-  by (auto intro: prob_space_uniform_measure)
-
-lemmas component_prob_space.prob_space_axioms[intro]
-
-sublocale prob_space M\<^sub>Y
-  by (auto intro: prob_space_PiM)
-
-lemma prob_space_PiM_U:
-  "prob_space (PiM I (\<lambda>_. U))"
-  by (auto intro: prob_space_PiM)
-
-lemma emeasure_space_PiM_U:
-  shows "emeasure (PiM I (\<lambda>_. U)) (space (PiM I (\<lambda>_. U))) = 1"
-  by (intro prob_space.emeasure_space_1 prob_space_PiM_U)
-
-lemma pair_sigma_finite_split_dim[intro]: "pair_sigma_finite U (Pi\<^sub>M (L - {i}) (\<lambda>i. U))"
-  by (intro pair_sigma_finite.intro prob_space_imp_sigma_finite prob_space_PiM) blast+
-
-lemmas pair_sigma_finite_split_dim'[intro] = pair_sigma_finite.pair_sigma_finite_swap[OF pair_sigma_finite_split_dim]
 
 definition dual_sol :: "('a \<Rightarrow> real) \<Rightarrow> 'a graph \<Rightarrow> real vec" where
   "dual_sol Y M \<equiv> vec n (\<lambda>i.
@@ -219,7 +195,6 @@ lemma primal_is_dual_times_F:
   shows "1\<^sub>v m \<bullet> primal_sol M = 1\<^sub>v n \<bullet> dual_sol Y M * F"
   using assms F_gt_0
   by (auto simp: primal_dot_One_card dual_dot_One_card)
-
 
 lemma preorder_on_neighbors_linorder_from_keys[intro]:
   assumes "H \<subseteq> G"
@@ -770,6 +745,31 @@ lemma measurable_dual_component_fun_upd:
   by (rule measurable_compose[OF _ measurable_dual_component])
      (use assms in measurable)
 
+lemma measurable_y\<^sub>c[measurable]: "j \<in> R \<Longrightarrow> (\<lambda>Y. y\<^sub>c Y \<pi> i j) \<in> borel_measurable (Pi\<^sub>M (L - {i}) (\<lambda>i. U))"
+proof (unfold y\<^sub>c_def, subst measurable_If_restrict_space_iff, subst ranking_Restr_to_vertices[symmetric], goal_cases)
+  case 2
+  then show ?case
+    by (subst linorder_from_keys_Restr) measurable
+next
+  case 3
+  have "set \<pi> \<subseteq> R"
+    by simp
+
+  then have *: "(\<lambda>Y. Y (THE i'. {i', j} \<in> ranking (linorder_from_keys L Y) (G \<setminus> {i}) \<pi>)) =
+    (\<lambda>Y. Y (THE i'. {i',j} \<in> ranking (linorder_from_keys (L - {i}) Y) (G \<setminus> {i}) \<pi>))"
+    by (subst ranking_Restr_to_vertices[symmetric])
+       (auto intro: preorder_on_imp_preorder_on' simp: linorder_from_keys_Restr)
+
+  from \<open>set \<pi> \<subseteq> R\<close> have **: "restrict_space (Pi\<^sub>M (L - {i}) (\<lambda>i. U)) {Y. j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \<pi>)} =
+    restrict_space (Pi\<^sub>M (L - {i}) (\<lambda>i. U)) {Y. j \<in> Vs (ranking (linorder_from_keys (L - {i}) Y) (G \<setminus> {i}) \<pi>)}"
+    by (subst ranking_Restr_to_vertices[symmetric])
+       (auto intro: preorder_on_imp_preorder_on' simp: linorder_from_keys_Restr)
+
+  show ?case
+    by (intro conjI, (subst * **)+, rule dual_component_online_borel_measurable)
+       (simp_all add: \<open>j \<in> R\<close>)
+qed auto
+
 lemma dual_sol_funcset:
   assumes Y_nonneg: "\<And>i. i \<in> L - X \<Longrightarrow> 0 \<le> Y i"
   assumes Y_less_eq_One: "\<And>i. i \<in> L - X \<Longrightarrow> Y i \<le> 1"
@@ -806,73 +806,9 @@ proof (intro funcsetI)
   qed
 qed
 
-lemma measurable_y\<^sub>c[measurable]: "j \<in> R \<Longrightarrow> (\<lambda>Y. y\<^sub>c Y \<pi> i j) \<in> borel_measurable (Pi\<^sub>M (L - {i}) (\<lambda>i. U))"
-proof (unfold y\<^sub>c_def, subst measurable_If_restrict_space_iff, subst ranking_Restr_to_vertices[symmetric], goal_cases)
-  case 2
-  then show ?case
-    by (subst linorder_from_keys_Restr) measurable
-next
-  case 3
-  have "set \<pi> \<subseteq> R"
-    by simp
-
-  then have *: "(\<lambda>Y. Y (THE i'. {i', j} \<in> ranking (linorder_from_keys L Y) (G \<setminus> {i}) \<pi>)) =
-    (\<lambda>Y. Y (THE i'. {i',j} \<in> ranking (linorder_from_keys (L - {i}) Y) (G \<setminus> {i}) \<pi>))"
-    by (subst ranking_Restr_to_vertices[symmetric])
-       (auto intro: preorder_on_imp_preorder_on' simp: linorder_from_keys_Restr)
-
-  from \<open>set \<pi> \<subseteq> R\<close> have **: "restrict_space (Pi\<^sub>M (L - {i}) (\<lambda>i. U)) {Y. j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \<pi>)} =
-    restrict_space (Pi\<^sub>M (L - {i}) (\<lambda>i. U)) {Y. j \<in> Vs (ranking (linorder_from_keys (L - {i}) Y) (G \<setminus> {i}) \<pi>)}"
-    by (subst ranking_Restr_to_vertices[symmetric])
-       (auto intro: preorder_on_imp_preorder_on' simp: linorder_from_keys_Restr)
-
-  show ?case
-    by (intro conjI, (subst * **)+, rule dual_component_online_borel_measurable)
-       (simp_all add: \<open>j \<in> R\<close>)
-qed (auto)
-
 lemma dual_sol_funcset_if_funcset:
   shows "Y \<in> (L - X) \<rightarrow> {0..1} \<Longrightarrow> ($) (dual_sol Y (ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>)) \<in> {..<n} \<rightarrow> {0..1/F}"
   by (intro dual_sol_funcset) auto
-
-lemma AE_PiM_subset_L_U_funcset:
-  assumes "L' \<subseteq> L"
-  shows "AE Y in \<Pi>\<^sub>M i \<in> L'. U. Y \<in> L' \<rightarrow> {0..1}"
-  using finite_L assms
-  by (intro AE_PiM_uniform_measure_PiE_countable)
-     (auto intro: countable_finite finite_subset)
-
-lemmas AE_Y_funcset = AE_PiM_subset_L_U_funcset[where L' = L, OF subset_refl]
-
-lemma AE_U_in_range: "AE y in U. y \<in> {0..1}"
-  by (auto intro: AE_uniform_measureI)
-
-lemma funcset_update:
-  assumes "Y \<in> L - {i} \<rightarrow> S"
-  assumes "y \<in> S"
-  shows "Y(i := y) \<in> L \<rightarrow> S"
-  using assms
-  by auto
-
-lemma AE_add_dim_in_range:
-  "AE (y,Y) in (U \<Otimes>\<^sub>M Pi\<^sub>M (L - {i}) (\<lambda>i. U)). y \<in> {0..1}"
-  by (subst pair_sigma_finite.AE_pair_measure_swap)
-     (auto simp: case_prod_beta space_pair_measure intro!: pair_sigma_finite.AE_pair_measure AE_uniform_measureI)
-
-lemma AE_add_dim_funcset:
-  "AE (y,Y) in (U \<Otimes>\<^sub>M Pi\<^sub>M (L - {i}) (\<lambda>i. U)). Y \<in> L - {i} \<rightarrow> {0..1}"
-  using finite_L
-  by (auto intro!: pair_sigma_finite.AE_pair_measure AE_PiM_subset_L_U_funcset simp: case_prod_beta space_pair_measure)
-
-lemma AE_split_dim_funcset:
-  shows "AE (y, Y) in U \<Otimes>\<^sub>M Pi\<^sub>M (L - {i}) (\<lambda>i. U). Y(i := y) \<in> L \<rightarrow> {0..1}"
-  using AE_add_dim_in_range AE_add_dim_funcset
-  by eventually_elim auto
-
-lemma AE_U_funcset:
-  "i \<in> L \<Longrightarrow> Y \<in> L - {i} \<rightarrow> {0..1} \<Longrightarrow> AE y in U. Y(i:=y) \<in> L \<rightarrow> {0..1}"
-  using AE_U_in_range
-  by eventually_elim auto
 
 lemma AE_dual_sol_funcset:
   shows "AE Y in \<Pi>\<^sub>M i \<in> L - X. U. ($) (dual_sol Y (ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>)) \<in> {..<n} \<rightarrow> {0..1/F}" 
@@ -891,7 +827,6 @@ lemma AE_dual_sol_U_funcset:
   shows "AE y in U. ($) (dual_sol (Y(i:=y)) (ranking (linorder_from_keys L (Y(i:=y))) G \<pi>)) \<in> {..<n} \<rightarrow> {0..1/F}"
   using assms
   by (intro eventually_mono[OF AE_U_in_range] dual_sol_funcset_if_funcset[where X = "{}", simplified] funcset_update)
-
 
 lemma integrable_g[simp]: "integrable U g"
 proof (intro integrableI_real_bounded, goal_cases)
@@ -1018,7 +953,7 @@ next
 
   then show ?case
     by (simp add: order_le_less_trans)
-qed (use \<open>j \<in> R\<close> in \<open>simp_all add: emeasure_space_PiM_U\<close>)
+qed (use \<open>j \<in> R\<close> in \<open>simp_all\<close>)
 
 lemma linorder_on_linorder_from_keys_insert:
   assumes linorder: "linorder_on A (linorder_from_keys A f)"
@@ -1276,7 +1211,7 @@ proof -
   finally have "?integral_bound1 \<ge> ?integral_bound2" .
 
   from F_gt_0 have "?integral_bound2 = 1"
-    by (auto simp: measure_def emeasure_space_PiM_U)
+    by (auto simp: measure_def)
 
   with \<open>?Ei_plus_Ej \<ge> ?integral_bound1\<close> \<open>?integral_bound1 \<ge> ?integral_bound2\<close> show ?thesis
     by linarith
@@ -1285,13 +1220,7 @@ qed
 
 abbreviation "expected_dual \<equiv> vec n (\<lambda>i. expectation (\<lambda>Y. dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ i))"
 
-lemma index_set_Int_is_doubleton:
-  assumes "i \<in> L" "j \<in> R"
-  shows "{0..<n} \<inter> {k. Vs_enum_inv k = i \<or> Vs_enum_inv k = j} = {Vs_enum i, Vs_enum j}"
-  using assms
-  by (auto intro: Vs_enum_less_n_L Vs_enum_less_n_R)
-
-theorem expected_dual_feasible: "incidence_matrix\<^sup>T *\<^sub>v expected_dual \<ge> 1\<^sub>v m"
+lemma expected_dual_feasible: "incidence_matrix\<^sup>T *\<^sub>v expected_dual \<ge> 1\<^sub>v m"
   unfolding Matrix.less_eq_vec_def
 proof (intro conjI allI impI, simp_all add: incidence_matrix_def)
   fix k assume "k < m"

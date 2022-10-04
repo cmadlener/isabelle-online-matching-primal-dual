@@ -25,12 +25,19 @@ lemma (in linordered_nonzero_semiring) mult_right_le: "c \<le> 1 \<Longrightarro
 
 lemma ln_one_plus_x_over_x_deriv':
   assumes "0 < x"
-  shows "((\<lambda>x. ln (1 + x) / x) has_real_derivative (((1/(1+x) *(0 + 1)) * x - ln (1+x) * 1) / (x * x))) (at x)"
+  shows "((\<lambda>x. ln (1 + x) / x) has_real_derivative (((1/(1+x) * (0 + 1)) * x - ln (1+x) * 1) / (x * x))) (at x)"
   using assms
   by (intro derivative_intros)
      auto
   
 lemmas ln_one_plus_x_over_x_deriv = ln_one_plus_x_over_x_deriv'[simplified]
+
+lemma ln_1_plus_x_ge:
+  fixes x :: real
+  assumes "0 < x"
+  shows "x / (1 + x) \<le> ln (1 + x)"
+  using assms
+  by (smt (verit) divide_minus_left ln_diff_le ln_one)
 
 lemma ln_1_plus_x_over_x_mono:
   fixes x y :: real
@@ -43,9 +50,8 @@ proof (intro DERIV_nonpos_imp_nonincreasing[OF \<open>x \<le> y\<close>])
     deriv: "((\<lambda>x. ln (1 + x) / x) has_real_derivative (z / (1 + z) - ln (1 + z)) / (z * z)) (at z)"
     by (auto intro: ln_one_plus_x_over_x_deriv)
 
-  from \<open>x \<le> z\<close> \<open>0 < x\<close> have "z / (1 + z) - ln (1 + z) \<le> 0"
-    apply (auto)
-    by (smt (verit) divide_minus_left ln_diff_le ln_one)
+  from \<open>0 < x\<close> \<open>x \<le> z\<close> have "z / (1 + z) - ln (1 + z) \<le> 0"
+    by (auto intro: ln_1_plus_x_ge)
 
   then have "(z / (1 + z) - ln (1 + z)) / (z * z) \<le> 0"
     by (auto intro: divide_nonpos_nonneg)
@@ -55,14 +61,14 @@ proof (intro DERIV_nonpos_imp_nonincreasing[OF \<open>x \<le> y\<close>])
 qed
 
 record 'a adwords_state =
-  matching :: "'a graph"
-  x :: "'a \<Rightarrow> real"
-  z :: "'a \<Rightarrow> real"
+  allocation :: "'a graph"
+  x :: "'a \<Rightarrow> real"      \<comment> \<open>dual solution for offline vertices\<close>
+  z :: "'a \<Rightarrow> real"      \<comment> \<open>dual solution for online vertices\<close>
 
 locale adwords_lp = bipartite_matching_lp +
-  fixes B :: "'a \<Rightarrow> real"
-  fixes b :: "'a set \<Rightarrow> real"
-  fixes \<pi> :: "'a list"
+  fixes B :: "'a \<Rightarrow> real"       \<comment> \<open>budgets\<close>
+  fixes b :: "'a set \<Rightarrow> real"   \<comment> \<open>bids\<close>
+  fixes \<pi> :: "'a list"          \<comment> \<open>arrival order of online vertices\<close>
 
   assumes perm: "\<pi> \<in> permutations_of_set R"
 
@@ -78,12 +84,17 @@ lemma
     and R_non_empty[intro,simp]: "R \<noteq> {}"
   using bipartite_edgeE bipartite_graph graph_non_empty by blast+
 
+text \<open>
+  We cannot charge a buyer more than their budget. In the analysis we establish a connection
+  between how much we actually charge any buyer and the sum of the bids of the products we
+  assign to them.
+\<close>
 abbreviation "total_bid_of M i \<equiv> \<Sum>e\<in>{e \<in> M. i \<in> e}. b e"
 abbreviation "charge_of M i \<equiv> min (B i) (total_bid_of M i)"
-definition "matching_value M \<equiv> \<Sum>i\<in>L. charge_of M i"
+definition "allocation_value M \<equiv> \<Sum>i\<in>L. charge_of M i"
 
-definition "max_value_matching M \<longleftrightarrow> one_sided_matching G M R \<and>
-  (\<forall>M'. one_sided_matching G M' R \<longrightarrow> matching_value M' \<le> matching_value M)"
+definition "max_value_allocation M \<longleftrightarrow> one_sided_matching G M R \<and>
+  (\<forall>M'. one_sided_matching G M' R \<longrightarrow> allocation_value M' \<le> allocation_value M)"
 
 abbreviation bids_vec :: "real vec" where
   "bids_vec \<equiv> vec m (\<lambda>i. b (from_nat_into G i))"
@@ -94,15 +105,26 @@ definition budget_constraint_mat :: "real mat" where
 definition budget_constraint_vec :: "real vec" where
   "budget_constraint_vec \<equiv> vec (card L) (\<lambda>i. B (from_nat_into L i))"
 
-definition matching_constraint_mat :: "real mat" where
-  "matching_constraint_mat \<equiv> mat (card R) m (\<lambda>(i,j). of_bool (from_nat_into R i \<in> from_nat_into G j))"
+definition allocation_constraint_mat :: "real mat" where
+  "allocation_constraint_mat \<equiv> mat (card R) m (\<lambda>(i,j). of_bool (from_nat_into R i \<in> from_nat_into G j))"
 
 definition constraint_matrix :: "real mat" where
-  "constraint_matrix \<equiv> budget_constraint_mat @\<^sub>r matching_constraint_mat"
+  "constraint_matrix \<equiv> budget_constraint_mat @\<^sub>r allocation_constraint_mat"
 
 definition constraint_vec :: "real vec" where
   "constraint_vec \<equiv> budget_constraint_vec @\<^sub>v 1\<^sub>v (card R)"
 
+text \<open>
+  Just taking \<^term>\<open>primal_sol\<close> of some produced allocation is not necessarily a feasible solution,
+  since it may ignore the budget constraint. The analysis constructs a feasible dual solution for
+  the fractional assignment LP. Hence, by weak LP duality we get an upper bound for the optimum
+  of the fractional assignment problem. In order to also bound the optimum of the integral
+  assignment problem we construct for each feasible solution of the integral assignment problem
+  a feasible solution for the fractional assignment problem of the same value. Note that this is
+  necessary, since the fractional assignment problem is not just a straightforward LP relaxation
+  of the integral assignment problem (in fact, the integral assignment problem is not an LP at at
+  all, since we use \<^term>\<open>min\<close> in the objective function).
+\<close>
 definition adwords_primal_sol :: "'a graph \<Rightarrow> real vec" where
   "adwords_primal_sol M \<equiv> vec m 
   (\<lambda>k. of_bool (from_nat_into G k \<in> M) * (let i = (THE i. i \<in> L \<and> i \<in> from_nat_into G k) in
@@ -149,18 +171,18 @@ proof -
     by (subst *) simp
 qed
 
-lemma max_value_matchingD: "max_value_matching M \<Longrightarrow> one_sided_matching G M R"
-  unfolding max_value_matching_def by blast
+lemma max_value_allocationD: "max_value_allocation M \<Longrightarrow> one_sided_matching G M R"
+  unfolding max_value_allocation_def by blast
 
-lemma matching_value_empty[simp]: "matching_value {} = 0"
-  unfolding matching_value_def
+lemma allocation_value_empty[simp]: "allocation_value {} = 0"
+  unfolding allocation_value_def
   by (auto intro!: sum.neutral intro: min_absorb2 dest: budgets_pos)
 
-lemma matching_value_nonneg: "M \<subseteq> G \<Longrightarrow> matching_value M \<ge> 0"
-  unfolding matching_value_def
+lemma allocation_value_nonneg: "M \<subseteq> G \<Longrightarrow> allocation_value M \<ge> 0"
+  unfolding allocation_value_def
   by (force intro!: sum_nonneg dest!: budgets_pos bids_pos)
 
-lemma matching_value_gt_0: "M \<subseteq> G \<Longrightarrow> M \<noteq> {} \<Longrightarrow> matching_value M > 0"
+lemma allocation_value_gt_0: "M \<subseteq> G \<Longrightarrow> M \<noteq> {} \<Longrightarrow> allocation_value M > 0"
 proof -
   assume "M \<subseteq> G" "M \<noteq> {}"
   then obtain e where e: "e \<in> M" "e \<in> G" by blast
@@ -171,18 +193,18 @@ proof -
   from \<open>M \<subseteq> G\<close> have "finite M"
     by (auto intro: finite_subset)
 
-  show "matching_value M > 0"
-    unfolding matching_value_def
+  show "allocation_value M > 0"
+    unfolding allocation_value_def
     by (rule sum_pos2[where i = i])
        (use e ij \<open>M \<subseteq> G\<close> \<open>finite M\<close> in \<open>auto dest!: bids_pos budgets_pos intro!: sum_pos2[where i = e]\<close>)
 qed
 
-lemma matching_value_zero_iff: "M \<subseteq> G \<Longrightarrow> matching_value M = 0 \<longleftrightarrow> M = {}"
-  by (auto dest: matching_value_gt_0)
+lemma allocation_value_zero_iff: "M \<subseteq> G \<Longrightarrow> allocation_value M = 0 \<longleftrightarrow> M = {}"
+  by (auto dest: allocation_value_gt_0)
 
-lemma max_value_matching_non_empty: "max_value_matching {} \<Longrightarrow> False"
+lemma max_value_allocation_non_empty: "max_value_allocation {} \<Longrightarrow> False"
 proof -
-  assume "max_value_matching {}"
+  assume "max_value_allocation {}"
   from graph_non_empty obtain e where "e \<in> G"
     by blast
 
@@ -199,18 +221,18 @@ proof -
   from \<open>j \<in> R\<close> have *: "i' \<in> L \<Longrightarrow> {e. e = {i, j} \<and> i' \<in> e} = (if i' = i then {{i,j}} else {})" for i'
     by auto
 
-  have "matching_value {e} > 0"
-    unfolding matching_value_def
+  have "allocation_value {e} > 0"
+    unfolding allocation_value_def
     by (rule sum_pos2[where i = i])
        (use ij \<open>e \<in> G\<close> in \<open>auto dest: budgets_pos bids_pos simp: *\<close>)
 
-  with \<open>max_value_matching {}\<close> \<open>one_sided_matching G {e} R\<close> show False
-    unfolding max_value_matching_def
+  with \<open>max_value_allocation {}\<close> \<open>one_sided_matching G {e} R\<close> show False
+    unfolding max_value_allocation_def
     by auto
 qed
 
-lemma max_value_matching_pos_value: "max_value_matching M \<Longrightarrow> matching_value M > 0"
-  by (metis matching_value_gt_0 max_value_matching_def max_value_matching_non_empty one_sided_matching_subgraphD)
+lemma max_value_allocation_pos_value: "max_value_allocation M \<Longrightarrow> allocation_value M > 0"
+  by (metis allocation_value_gt_0 max_value_allocation_def max_value_allocation_non_empty one_sided_matching_subgraphD)
 
 lemma 
   shows dim_row_budget_constraint_mat[simp]: "dim_row budget_constraint_mat = card L"
@@ -224,9 +246,9 @@ lemma
   unfolding budget_constraint_vec_def by simp_all
 
 lemma 
-  shows dim_row_matching_constraint_mat[simp]: "dim_row matching_constraint_mat = card R"
-    and matching_constraint_carrier_mat[intro]: "matching_constraint_mat \<in> carrier_mat (card R) m"
-  unfolding matching_constraint_mat_def by simp_all
+  shows dim_row_allocation_constraint_mat[simp]: "dim_row allocation_constraint_mat = card R"
+    and allocation_constraint_carrier_mat[intro]: "allocation_constraint_mat \<in> carrier_mat (card R) m"
+  unfolding allocation_constraint_mat_def by simp_all
 
 lemma 
   shows constraint_matrix_carrier_mat[intro]: "constraint_matrix \<in> carrier_mat n m"
@@ -263,7 +285,7 @@ lemma
   by (auto simp: n_sum)
 
 lemma dual_sol_init[simp]:
-  "dual_sol \<lparr> matching = M, x = \<lambda>_. 0, z = \<lambda>_. 0 \<rparr> = 0\<^sub>v n"
+  "dual_sol \<lparr> allocation = M, x = \<lambda>_. 0, z = \<lambda>_. 0 \<rparr> = 0\<^sub>v n"
   unfolding dual_sol_def offline_dual_def online_dual_def append_vec_def
   by (auto simp: Let_def n_sum)
 
@@ -296,7 +318,7 @@ lemma adwords_primal_sol_nonneg[intro]:
 
 lemma adwords_primal_dot_bids_eq_value:
   assumes "M \<subseteq> G"
-  shows "bids_vec \<bullet> adwords_primal_sol M = matching_value M"
+  shows "bids_vec \<bullet> adwords_primal_sol M = allocation_value M"
 proof -
   have "bids_vec \<bullet> adwords_primal_sol M = 
     (\<Sum>k \<in> {0..<m} \<inter> {k. from_nat_into G k \<in> M}. b (from_nat_into G k) *
@@ -307,15 +329,15 @@ proof -
   also from \<open>M \<subseteq> G\<close> have "\<dots> = (\<Sum>e\<in>M. b e *
     (let i = (THE i. i \<in> L \<and> i \<in> e) in if total_bid_of M i \<le> B i then 1 else B i / total_bid_of M i))"
     by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = G_enum]
-             intro: to_nat_on_from_nat_into_less simp: countable_finite m_def to_nat_on_less_card)
+             intro: to_nat_on_from_nat_into_less simp: countable_finite to_nat_on_less_card)
 
   also from bipartite_graph \<open>M \<subseteq> G\<close> have "\<dots> = (\<Sum>i\<in>L. (\<Sum>e\<in>{e\<in>M. i \<in> e}. b e * (if total_bid_of M i \<le> B i then 1 else B i / total_bid_of M i)))"
-    apply (auto simp add: sum_edges_eq_sum_vs Let_def intro!: sum.cong)
+    apply (auto simp: sum_edges_eq_sum_vs Let_def intro!: sum.cong)
      apply (smt (verit, ccfv_threshold) Collect_cong bipartite_commute bipartite_eqI in_mono the_equality)+
     done
 
-  also have "\<dots> = matching_value M"
-    unfolding matching_value_def
+  also have "\<dots> = allocation_value M"
+    unfolding allocation_value_def
     by (auto intro!: sum.cong simp flip: sum_distrib_right sum_divide_distrib dest: budgets_pos)
 
   finally show ?thesis .
@@ -327,7 +349,7 @@ lemma primal_dot_bids_eq_sum_edges:
   unfolding scalar_prod_def primal_sol_def
   using assms
   by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = G_enum]
-           intro: to_nat_on_from_nat_into_less simp: m_def to_nat_on_less_card countable_finite)
+           intro: to_nat_on_from_nat_into_less simp: to_nat_on_less_card countable_finite)
 
 lemma subgraph_budget_constraint:
   assumes "M \<subseteq> G"
@@ -346,11 +368,10 @@ proof (intro conjI allI impI, simp_all)
   from assms have "row budget_constraint_mat k \<bullet> adwords_primal_sol M = 
     (\<Sum>k \<in> {0..<m} \<inter> {k. ?i \<in> from_nat_into G k} \<inter> {k. from_nat_into G k \<in> M}. b (from_nat_into G k) *
       (let i' = (THE i'. i' \<in> L \<and> i' \<in> from_nat_into G k) in if total_bid_of M i' \<le> B i' then 1 else B i' / total_bid_of M i'))"
-    unfolding scalar_prod_def budget_constraint_mat_def adwords_primal_sol_def m_def
+    unfolding scalar_prod_def budget_constraint_mat_def adwords_primal_sol_def
     by (auto simp flip: sum_of_bool_mult_eq simp: algebra_simps)
 
   also from \<open>M \<subseteq> G\<close> \<open>?i \<in> L\<close> have "\<dots> = (\<Sum>e\<in>{e\<in>M. ?i \<in> e}. b e * (if total_bid_of M ?i \<le> B ?i then 1 else B ?i / total_bid_of M ?i))"
-    unfolding m_def
     by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = G_enum]
              intro: to_nat_on_from_nat_into_less
              simp: countable_finite to_nat_on_less_card Let_def dest: the_i)
@@ -364,9 +385,9 @@ proof (intro conjI allI impI, simp_all)
   finally show "row budget_constraint_mat k \<bullet> adwords_primal_sol M \<le> budget_constraint_vec $ k" .
 qed
 
-lemma one_sided_matching_matching_constraint:
+lemma one_sided_matching_allocation_constraint:
   assumes "one_sided_matching G M R"
-  shows "matching_constraint_mat *\<^sub>v adwords_primal_sol M \<le> 1\<^sub>v (card R)"
+  shows "allocation_constraint_mat *\<^sub>v adwords_primal_sol M \<le> 1\<^sub>v (card R)"
   unfolding less_eq_vec_def
 proof (intro conjI allI impI, simp_all)
   fix k assume [intro,simp]: "k < card R"
@@ -377,9 +398,9 @@ proof (intro conjI allI impI, simp_all)
   have online: "?j \<in> R"
     by (metis \<open>k < card R\<close> bot_nat_0.extremum_strict card.empty from_nat_into)
 
-  from online \<open>M \<subseteq> G\<close> have "row matching_constraint_mat k \<bullet> adwords_primal_sol M = 
+  from online \<open>M \<subseteq> G\<close> have "row allocation_constraint_mat k \<bullet> adwords_primal_sol M = 
     (\<Sum>e\<in>{e\<in>M. ?j \<in> e}. let i = THE i. i \<in> L \<and> i \<in> e in if total_bid_of M i \<le> B i then 1 else B i / total_bid_of M i)"
-    unfolding scalar_prod_def matching_constraint_mat_def adwords_primal_sol_def m_def
+    unfolding scalar_prod_def allocation_constraint_mat_def adwords_primal_sol_def
     by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = G_enum]
              intro: to_nat_on_from_nat_into_less simp: countable_finite to_nat_on_less_card)
 
@@ -391,7 +412,7 @@ proof (intro conjI allI impI, simp_all)
     unfolding one_sided_matching_def
     by auto
 
-  finally show "row matching_constraint_mat k \<bullet> adwords_primal_sol M \<le> 1" .
+  finally show "row allocation_constraint_mat k \<bullet> adwords_primal_sol M \<le> 1" .
 qed
 
 lemma one_sided_matching_feasible:
@@ -399,19 +420,19 @@ lemma one_sided_matching_feasible:
   shows "constraint_matrix *\<^sub>v adwords_primal_sol M \<le> constraint_vec"
   unfolding constraint_matrix_def constraint_vec_def
   by (subst append_rows_le)
-     (use assms in \<open>auto intro: subgraph_budget_constraint one_sided_matching_matching_constraint
+     (use assms in \<open>auto intro: subgraph_budget_constraint one_sided_matching_allocation_constraint
                          dest: one_sided_matching_subgraphD\<close>)
 
-lemma matching_value_bound_by_feasible_dual:
+lemma allocation_value_bound_by_feasible_dual:
   fixes y :: "real vec"
   assumes "one_sided_matching G M R"
 
   assumes "constraint_matrix\<^sup>T *\<^sub>v y \<ge> bids_vec"
   assumes "y \<ge> 0\<^sub>v n"
 
-  shows "matching_value M \<le> constraint_vec \<bullet> y"
+  shows "allocation_value M \<le> constraint_vec \<bullet> y"
 proof -
-  from assms have "matching_value M = bids_vec \<bullet> adwords_primal_sol M"
+  from assms have "allocation_value M = bids_vec \<bullet> adwords_primal_sol M"
     by (auto simp: adwords_primal_dot_bids_eq_value dest: one_sided_matching_subgraphD)
 
   also from assms have "\<dots> \<le> constraint_vec \<bullet> y"
@@ -421,16 +442,16 @@ proof -
   finally show ?thesis .
 qed
 
-lemma max_value_matching_bound_by_feasible_dual:
+lemma max_value_allocation_bound_by_feasible_dual:
   fixes y :: "real vec"
-  assumes "max_value_matching M"
+  assumes "max_value_allocation M"
 
   assumes "constraint_matrix\<^sup>T *\<^sub>v y \<ge> bids_vec"
   assumes "y \<ge> 0\<^sub>v n"
 
-  shows "matching_value M \<le> constraint_vec \<bullet> y"
+  shows "allocation_value M \<le> constraint_vec \<bullet> y"
   using assms
-  by (auto intro: matching_value_bound_by_feasible_dual dest: max_value_matchingD)
+  by (auto intro: allocation_value_bound_by_feasible_dual dest: max_value_allocationD)
 
 definition "R_max \<equiv> Max {b {i, j} / B i | i j. {i,j} \<in> G \<and> i \<in> L \<and> j \<in> R}"
 definition "c \<equiv> (1 + R_max) powr (1 / R_max)"
@@ -438,19 +459,19 @@ definition "c \<equiv> (1 + R_max) powr (1 / R_max)"
 definition adwords_step :: "'a adwords_state \<Rightarrow> 'a \<Rightarrow> 'a adwords_state" where
   "adwords_step s j \<equiv> 
     let ns = {i. {i,j} \<in> G} in
-    if ns \<noteq> {} \<and> j \<notin> Vs (matching s)
+    if ns \<noteq> {} \<and> j \<notin> Vs (allocation s)
     then let i = arg_max_on (\<lambda>i. b {i, j} * (1 - (x s) i)) ns in
       if (x s) i \<ge> 1 
       then s
       else \<lparr> 
-        matching = insert {i,j} (matching s),
+        allocation = insert {i,j} (allocation s),
         x = (x s)(i := (x s) i * (1 + b {i, j} / B i) + b {i, j} / ((c-1) * B i)),
         z = (z s)(j := b {i, j} * (1 - (x s) i))
       \<rparr>
     else s"
 
 definition "adwords' s \<equiv> foldl adwords_step s"
-abbreviation "adwords \<equiv> adwords' \<lparr> matching = {}, x = \<lambda>_. 0, z = \<lambda>_. 0 \<rparr>"
+abbreviation "adwords \<equiv> adwords' \<lparr> allocation = {}, x = \<lambda>_. 0, z = \<lambda>_. 0 \<rparr>"
 
 lemma adwords_Nil[simp]: "adwords' s [] = s"
   unfolding adwords'_def by simp
@@ -466,13 +487,13 @@ lemma adwords_step_cases[case_names no_neighbor j_matched no_budget new_match]:
   defines "i \<equiv> arg_max_on (\<lambda>i. b {i,j} * (1 - x s i)) {i. {i,j} \<in> G}"
 
   assumes "{i. {i,j} \<in> G} = {} \<Longrightarrow> P"
-  assumes "j \<in> Vs (matching s) \<Longrightarrow> P"
+  assumes "j \<in> Vs (allocation s) \<Longrightarrow> P"
   assumes "x s i \<ge> 1 \<Longrightarrow> P"
-  assumes "\<lbrakk> j \<notin> Vs (matching s); {i,j} \<in> G; x s i < 1; {i. {i,j} \<in> G} \<noteq> {}; \<comment> \<open>keep this redundant assumption for simplification\<close>
+  assumes "\<lbrakk> j \<notin> Vs (allocation s); {i,j} \<in> G; x s i < 1; {i. {i,j} \<in> G} \<noteq> {}; \<comment> \<open>keep this redundant assumption for simplification\<close>
     \<not>(\<exists>i'\<in>{i. {i,j} \<in> G}. b {i',j} * (1 - x s i') > b {i,j} * (1 - x s i)) \<rbrakk> \<Longrightarrow> P"
   shows P
 proof -
-  consider "{i. {i,j} \<in> G} = {}" | "j \<in> Vs (matching s)" | "x s i \<ge> 1" | "{i. {i,j} \<in> G} \<noteq> {} \<and> j \<notin> Vs (matching s) \<and> x s i < 1"
+  consider "{i. {i,j} \<in> G} = {}" | "j \<in> Vs (allocation s)" | "x s i \<ge> 1" | "{i. {i,j} \<in> G} \<noteq> {} \<and> j \<notin> Vs (allocation s) \<and> x s i < 1"
     by fastforce
 
   then show P
@@ -493,9 +514,9 @@ lemma adwords_step_casesR[consumes 1, case_names no_neighbor j_matched no_budget
   defines "i \<equiv> arg_max_on (\<lambda>i. b {i,j} * (1 - x s i)) {i. {i,j} \<in> G}"
   assumes "j \<in> R"
   assumes "{i. {i,j} \<in> G} = {} \<Longrightarrow> P"
-  assumes "j \<in> Vs (matching s) \<Longrightarrow> P"
+  assumes "j \<in> Vs (allocation s) \<Longrightarrow> P"
   assumes "x s i \<ge> 1 \<Longrightarrow> P"
-  assumes "\<lbrakk> j \<notin> Vs (matching s); {i,j} \<in> G; x s i < 1; {i. {i,j} \<in> G} \<noteq> {}; \<comment> \<open>keep this redundant assumption for simplification\<close>
+  assumes "\<lbrakk> j \<notin> Vs (allocation s); {i,j} \<in> G; x s i < 1; {i. {i,j} \<in> G} \<noteq> {}; \<comment> \<open>keep this redundant assumption for simplification\<close>
     i \<in> L;
     \<not>(\<exists>i'\<in>{i. {i,j} \<in> G}. b {i',j} * (1 - x s i') > b {i,j} * (1 - x s i)) \<rbrakk> \<Longrightarrow> P"
   shows P
@@ -522,10 +543,9 @@ lemma bid_ratio_pos: "i \<in> L \<Longrightarrow> {i,j} \<in> G \<Longrightarrow
 
 lemma R_max_pos: "0 < R_max"
   unfolding R_max_def
-  apply (subst Max_gr_iff)
-    apply (intro finite_bid_ratios bid_ratios_non_empty)+
-  using bid_ratios_non_empty bids_pos budgets_pos divide_pos_pos apply blast
-  done
+  using bid_ratios_non_empty
+  by (subst Max_gr_iff)
+     (auto intro: finite_bid_ratios divide_pos_pos dest: bids_pos budgets_pos)
 
 lemma R_max_ge:
   assumes "i \<in> L"
@@ -583,22 +603,38 @@ proof (intro mult_imp_le_div_pos add_pos_pos)
 qed (use assms in \<open>auto intro: budgets_pos bids_pos\<close>)
 
 lemma adwords_step_subgraph:
-  assumes "matching s \<subseteq> G"
-  shows "matching (adwords_step s j) \<subseteq> G"
+  assumes "allocation s \<subseteq> G"
+  shows "allocation (adwords_step s j) \<subseteq> G"
   using assms
   by (cases j rule: adwords_step_cases[where s = s])
      (auto simp: adwords_step_def Let_def)
 
 lemma adwords_subgraph:
-  assumes "matching s \<subseteq> G"
-  shows "matching (adwords' s js) \<subseteq> G"
+  assumes "allocation s \<subseteq> G"
+  shows "allocation (adwords' s js) \<subseteq> G"
   using assms
   by (induction js arbitrary: s)
      (auto simp: adwords_Cons dest: adwords_step_subgraph)
 
+lemma one_sided_matching_adwords_step:
+  assumes "j \<in> R"
+  assumes "one_sided_matching G (allocation s) R"
+  shows "one_sided_matching G (allocation (adwords_step s j)) R"
+  using assms
+  by (cases j rule: adwords_step_casesR[where s = s])
+     (auto simp: adwords_step_def Let_def intro: one_sided_matching_insertI)
+
+lemma one_sided_matching_adwords:
+  assumes "set js \<subseteq> R"
+  assumes "one_sided_matching G (allocation s) R"
+  shows "one_sided_matching G (allocation (adwords' s js)) R"
+  using assms
+  by (induction js arbitrary: s)
+     (auto simp: adwords_Cons dest: one_sided_matching_adwords_step)
+
 lemma finite_adwords_step:
-  assumes "finite (matching s)"
-  shows "finite (matching (adwords_step s j))"
+  assumes "finite (allocation s)"
+  shows "finite (allocation (adwords_step s j))"
   using assms
   by (cases j rule: adwords_step_cases[where s = s])
      (auto simp: adwords_step_def Let_def)
@@ -681,8 +717,8 @@ lemma adwords_z_unchanged:
 lemma unmatched_R_in_adwords_step_if:
   assumes "j \<in> R" "j' \<in> R"
   assumes "j \<noteq> j'"
-  assumes "j \<notin> Vs (matching s)"
-  shows "j \<notin> Vs (matching (adwords_step s j'))"
+  assumes "j \<notin> Vs (allocation s)"
+  shows "j \<notin> Vs (allocation (adwords_step s j'))"
   using \<open>j' \<in> R\<close>
   by (cases j' rule: adwords_step_casesR[where s = s])
      (use assms in \<open>auto simp: adwords_step_def Let_def vs_insert\<close>)
@@ -690,13 +726,13 @@ lemma unmatched_R_in_adwords_step_if:
 lemma unmatched_R_in_adwords_if:
   assumes "j \<notin> set js" "j \<in> R"
   assumes "set js \<subseteq> R"
-  assumes "j \<notin> Vs (matching s)"
-  shows "j \<notin> Vs (matching (adwords' s js))"
+  assumes "j \<notin> Vs (allocation s)"
+  shows "j \<notin> Vs (allocation (adwords' s js))"
   using assms
 proof (induction js arbitrary: s)
   case (Cons j' js)
 
-  then have "j \<notin> Vs (matching (adwords_step s j'))"
+  then have "j \<notin> Vs (allocation (adwords_step s j'))"
     by (intro unmatched_R_in_adwords_step_if) auto
 
   with Cons show ?case
@@ -735,7 +771,7 @@ next
     with \<open>{i,j} \<in> G\<close> show ?thesis by blast
   next
     case j_matched
-    from \<pi>_decomp set_pre \<open>j \<in> R\<close> have "j \<notin> Vs (matching (adwords pre))"
+    from \<pi>_decomp set_pre \<open>j \<in> R\<close> have "j \<notin> Vs (allocation (adwords pre))"
       by (intro unmatched_R_in_adwords_if) auto
 
     with j_matched show ?thesis by blast
@@ -784,9 +820,7 @@ next
       by argo
 
     also from set_pre set_suff \<open>{i,j} \<in> G\<close> \<open>j \<in> R\<close> have "\<dots> \<le> b {i,j} * x (adwords \<pi>) i + b {i,j} * (1 - x (adwords pre) i)"
-      apply (auto dest!: bids_pos simp: \<pi>_decomp adwords_append intro!: adwords_x_mono adwords_x_nonneg)
-      apply blast
-      done      
+      by (force dest: bids_pos simp: \<pi>_decomp adwords_append intro: adwords_x_mono adwords_x_nonneg)
 
     also from new_match \<open>{i,j} \<in> G\<close>
     have "\<dots> \<le> b {i,j} * x (adwords \<pi>) i + b {?i',j} * (1 - x (adwords pre) ?i')"
@@ -805,11 +839,11 @@ lemma dual_feasible:
 proof (intro conjI allI impI, simp_all)
   fix k assume "k < m"
 
-  then have col_k: "col constraint_matrix k = col budget_constraint_mat k @\<^sub>v col matching_constraint_mat k"
+  then have col_k: "col constraint_matrix k = col budget_constraint_mat k @\<^sub>v col allocation_constraint_mat k"
     unfolding constraint_matrix_def append_rows_def
     by (auto intro!: col_four_block_mat)
 
-  from \<open>k < m\<close> have col_carrier_vec[intro]: "col budget_constraint_mat k \<in> carrier_vec (card L)" "col matching_constraint_mat k \<in> carrier_vec (card R)"
+  from \<open>k < m\<close> have col_carrier_vec[intro]: "col budget_constraint_mat k \<in> carrier_vec (card L)" "col allocation_constraint_mat k \<in> carrier_vec (card R)"
     by (auto intro: col_carrier_vec)
     
   from \<open>k < m\<close> obtain i j where ij: "{i,j} \<in> G" "from_nat_into G k = {i,j}" "i \<in> L" "j \<in> R"
@@ -821,8 +855,8 @@ proof (intro conjI allI impI, simp_all)
   from \<open>i \<in> L\<close> \<open>j \<in> R\<close> have indicat_online: "{0..<card R} \<inter> {l. from_nat_into R l \<in> from_nat_into G k} = {to_nat_on R j}"
     by (auto simp: \<open>from_nat_into G k = {i,j}\<close> from_nat_into R_enum_less_card)
 
-  from \<open>k < m\<close> have [simp]: "col matching_constraint_mat k \<bullet> online_dual (adwords \<pi>) = z (adwords \<pi>) j"
-    unfolding matching_constraint_mat_def online_dual_def scalar_prod_def
+  from \<open>k < m\<close> have [simp]: "col allocation_constraint_mat k \<bullet> online_dual (adwords \<pi>) = z (adwords \<pi>) j"
+    unfolding allocation_constraint_mat_def online_dual_def scalar_prod_def
     by (auto simp: indicat_online)
 
   from from_nat_into[OF L_non_empty] \<open>i \<in> L\<close> \<open>j \<in> R\<close> have indicat_offline: "{0..<card L} \<inter> {i. from_nat_into L i \<in> from_nat_into G k} = {to_nat_on L i}"
@@ -851,33 +885,31 @@ lemma dual_nonneg:
 lemma dual_primal_times_adwords_step:
   assumes "j \<in> R"
   assumes "z s j = 0"
-  assumes "constraint_vec \<bullet> dual_sol s * (1 - 1 / c) = bids_vec \<bullet> primal_sol (matching s)"
-  shows "constraint_vec \<bullet> dual_sol (adwords_step s j) * (1 - 1 / c) = bids_vec \<bullet> primal_sol (matching (adwords_step s j))"
+  assumes "constraint_vec \<bullet> dual_sol s * (1 - 1 / c) = bids_vec \<bullet> primal_sol (allocation s)"
+  shows "constraint_vec \<bullet> dual_sol (adwords_step s j) * (1 - 1 / c) = bids_vec \<bullet> primal_sol (allocation (adwords_step s j))"
   using \<open>j \<in> R\<close>
 proof (cases j rule: adwords_step_casesR[where s = s])
   case new_match
   let ?i = "arg_max_on (\<lambda>i. b {i, j} * (1 - x s i)) {i. {i, j} \<in> G}"
 
   from new_match 
-  have matching_insert: "matching (adwords_step s j) = insert {?i,j} (matching s)"
+  have allocation_insert: "allocation (adwords_step s j) = insert {?i,j} (allocation s)"
     and edge: "{?i,j} \<in> G"
     and x_upd: "x (adwords_step s j) = (x s)(?i := (x s) ?i * (1 + b {?i, j} / B ?i) + b {?i, j} / ((c-1) * B ?i))"
     and z_upd: "z (adwords_step s j) = (z s)(j := b {?i, j} * (1 - (x s) ?i))"
     by (simp_all add: adwords_step_def Let_def)
 
-  from new_match have "{?i,j} \<notin> matching s"
+  from new_match have "{?i,j} \<notin> allocation s"
     by (auto dest: edges_are_Vs)
 
-  with edge have insert_indices: "{0..<m} \<inter> {i. from_nat_into G i \<in> matching (adwords_step s j)} = 
-    insert (G_enum {?i,j}) ({0..<m} \<inter> {i. from_nat_into G i \<in> matching s})"
-    apply (auto simp: matching_insert countable_finite intro: G_enum_less_m)
-    apply (metis finite_graph m_def to_nat_on_from_nat_into_less)
-    done
+  with edge have insert_indices: "{0..<m} \<inter> {i. from_nat_into G i \<in> allocation (adwords_step s j)} = 
+    insert (G_enum {?i,j}) ({0..<m} \<inter> {i. from_nat_into G i \<in> allocation s})"
+    by (auto simp: allocation_insert countable_finite intro: G_enum_less_m dest!: to_nat_on_from_nat_into_less[OF finite_graph])
 
-  from \<open>{?i,j} \<notin> matching s\<close> have "G_enum {?i,j} \<notin> ({0..<m} \<inter> {i. from_nat_into G i \<in> matching s})"
+  from \<open>{?i,j} \<notin> allocation s\<close> have "G_enum {?i,j} \<notin> ({0..<m} \<inter> {i. from_nat_into G i \<in> allocation s})"
     by (auto simp: countable_finite edge)
 
-  then have \<Delta>_primal: "bids_vec \<bullet> primal_sol (matching (adwords_step s j)) = b {?i,j} + bids_vec \<bullet> primal_sol (matching s)"
+  then have \<Delta>_primal: "bids_vec \<bullet> primal_sol (allocation (adwords_step s j)) = b {?i,j} + bids_vec \<bullet> primal_sol (allocation s)"
     by (auto simp: scalar_prod_def primal_sol_def insert_indices countable_finite edge)
 
   have \<Delta>_offline: "budget_constraint_vec \<bullet> offline_dual (adwords_step s j) = B ?i * (x s ?i * b {?i,j} / B ?i + b {?i,j} / ((c-1) * B ?i)) +
@@ -892,9 +924,8 @@ proof (cases j rule: adwords_step_casesR[where s = s])
 
     also have "\<dots> = B ?i * (x s ?i * (1 + b {?i, j} / B ?i) + b {?i, j} / ((c-1) * B ?i)) +
       (\<Sum>i\<in>{0..<card L} - {to_nat_on L ?i}. B (from_nat_into L i) * x s (from_nat_into L i))"
-      apply (rule arg_cong2[where f= plus])
-       apply (auto simp add: x_upd intro!: sum.cong split: if_splits)
-      by (metis L_enum_inv)
+      by (rule arg_cong2[where f= plus])
+         (auto simp add: x_upd intro!: sum.cong split: if_splits dest!: L_enum_inv)
 
     also have "\<dots> = B ?i * (x s ?i * b {?i,j} / B ?i + b {?i,j} / ((c-1) * B ?i)) + B ?i * x s ?i +
       (\<Sum>i\<in>{0..<card L} - {to_nat_on L ?i}. B (from_nat_into L i) * x s (from_nat_into L i))"
@@ -915,12 +946,12 @@ proof (cases j rule: adwords_step_casesR[where s = s])
   from \<open>j \<in> R\<close> have **: "{0..<card R} \<inter> - {i. from_nat_into R i = j} = {0..<card R} - {to_nat_on R j}"
     by auto
 
-  from \<open>z s j = 0\<close> \<open>j \<in> R\<close> have \<Delta>_online: "1\<^sub>v (card R) \<bullet> online_dual (adwords_step s j) = b {?i,j} * (1 - x s ?i) + 1\<^sub>v (card R) \<bullet> online_dual s"
+  from \<open>j \<in> R\<close> have "to_nat_on R j \<in> {0..<card R}"
+    by (auto intro: R_enum_less_card)
+
+  with \<open>z s j = 0\<close> \<open>j \<in> R\<close> have \<Delta>_online: "1\<^sub>v (card R) \<bullet> online_dual (adwords_step s j) = b {?i,j} * (1 - x s ?i) + 1\<^sub>v (card R) \<bullet> online_dual s"
     unfolding scalar_prod_def online_dual_def
-    apply (auto simp: z_upd sum.If_cases * **)
-    apply (subst (2) sum.remove[where x = "to_nat_on R j"])
-      apply (auto intro: R_enum_less_card)
-    done
+    by (auto simp add: z_upd sum.If_cases * ** sum.remove)
 
   have "constraint_vec \<bullet> dual_sol (adwords_step s j) = budget_constraint_vec \<bullet> offline_dual (adwords_step s j) +
     1\<^sub>v (card R) \<bullet> online_dual (adwords_step s j)"
@@ -937,10 +968,10 @@ proof (cases j rule: adwords_step_casesR[where s = s])
   finally have \<Delta>_dual: "constraint_vec \<bullet> dual_sol (adwords_step s j) = 
     ?\<Delta> + b {?i,j} * (1 - x s ?i) + constraint_vec \<bullet> dual_sol s" .
 
-  have "\<dots> * (1 - 1/c) = (?\<Delta> + b {?i,j} * (1 - x s ?i)) * (1 - 1/c) + bids_vec \<bullet> primal_sol (matching s)"
+  have "\<dots> * (1 - 1/c) = (?\<Delta> + b {?i,j} * (1 - x s ?i)) * (1 - 1/c) + bids_vec \<bullet> primal_sol (allocation s)"
     by (auto simp: field_simps assms)
 
-  also from c_gt_1 \<open>?i \<in> L\<close> have "\<dots> = b {?i,j} + bids_vec \<bullet> primal_sol (matching s)"
+  also from c_gt_1 \<open>?i \<in> L\<close> have "\<dots> = b {?i,j} + bids_vec \<bullet> primal_sol (allocation s)"
     by (auto simp: field_simps dest: budgets_pos)
 
   finally show ?thesis 
@@ -948,16 +979,16 @@ proof (cases j rule: adwords_step_casesR[where s = s])
 qed (use assms in \<open>auto simp: adwords_step_def\<close>)
 
 lemma dual_primal_times_adwords':
-  assumes "constraint_vec \<bullet> dual_sol s * (1 - 1 / c) = bids_vec \<bullet> primal_sol (adwords_state.matching s)"
+  assumes "constraint_vec \<bullet> dual_sol s * (1 - 1 / c) = bids_vec \<bullet> primal_sol (allocation s)"
   assumes "distinct js"
   assumes "set js \<subseteq> R"
   assumes "\<forall>j \<in> set js. z s j = 0"
-  shows "constraint_vec \<bullet> dual_sol (adwords' s js) * (1 - 1 / c) = bids_vec \<bullet> primal_sol (matching (adwords' s js))"
+  shows "constraint_vec \<bullet> dual_sol (adwords' s js) * (1 - 1 / c) = bids_vec \<bullet> primal_sol (allocation (adwords' s js))"
   using assms
 proof (induction js arbitrary: s)
   case (Cons j js)
 
-  then have step: "constraint_vec \<bullet> dual_sol (adwords_step s j) * (1 - 1/c) = bids_vec \<bullet> primal_sol (matching (adwords_step s j))"
+  then have step: "constraint_vec \<bullet> dual_sol (adwords_step s j) * (1 - 1/c) = bids_vec \<bullet> primal_sol (allocation (adwords_step s j))"
     by (auto intro: dual_primal_times_adwords_step)
 
   from Cons.prems have "\<forall>j' \<in> set js. z (adwords_step s j) j' = z s j'"
@@ -971,42 +1002,42 @@ proof (induction js arbitrary: s)
 qed simp
 
 lemma dual_primal_times_adwords:
-  shows "constraint_vec \<bullet> dual_sol (adwords \<pi>) * (1 - 1/c) = bids_vec \<bullet> primal_sol (matching (adwords \<pi>))"
+  shows "constraint_vec \<bullet> dual_sol (adwords \<pi>) * (1 - 1/c) = bids_vec \<bullet> primal_sol (allocation (adwords \<pi>))"
   using perm c_gt_1
   by (auto intro!: dual_primal_times_adwords' scalar_prod_right_zero dest: permutations_of_setD)
 
 lemma primal_almost_feasible_adwords_step:
   assumes "i \<in> L"
   assumes "j \<in> R"
-  assumes "matching s \<subseteq> G"
-  assumes "1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
-  shows "1/(c-1) * (c powr (total_bid_of (matching (adwords_step s j)) i / B i) - 1) \<le> x (adwords_step s j) i"
+  assumes "allocation s \<subseteq> G"
+  assumes "1/(c-1) * (c powr (total_bid_of (allocation s) i / B i) - 1) \<le> x s i"
+  shows "1/(c-1) * (c powr (total_bid_of (allocation (adwords_step s j)) i / B i) - 1) \<le> x (adwords_step s j) i"
 proof (cases j rule: adwords_step_cases[where s = s])
   case new_match
   let ?i' = "arg_max_on (\<lambda>i. b {i, j} * (1 - x s i)) {i. {i, j} \<in> G}"
 
-  from new_match have matching_eq: "matching (adwords_step s j) = insert {?i',j} (matching s)"
+  from new_match have allocation_eq: "allocation (adwords_step s j) = insert {?i',j} (allocation s)"
     by (simp add: adwords_step_def Let_def)
 
   show ?thesis
   proof (cases "?i' = i")
     case True
-    then have *: "{e\<in>matching (adwords_step s j). i \<in> e} = insert {i,j} {e\<in>matching s. i \<in> e}"
-      by (auto simp: matching_eq)
+    then have *: "{e\<in>allocation (adwords_step s j). i \<in> e} = insert {i,j} {e\<in>allocation s. i \<in> e}"
+      by (auto simp: allocation_eq)
 
     from new_match True have "{i,j} \<in> G"
       by blast
 
-    with \<open>j \<notin> Vs (matching s)\<close> have "1/(c-1) * (c powr (total_bid_of (matching (adwords_step s j)) i / B i) - 1) =
-      1/(c-1) * (c powr (total_bid_of (matching s) i / B i) * c powr (b {i,j} / B i) - 1)"
+    with \<open>j \<notin> Vs (allocation s)\<close> have "1/(c-1) * (c powr (total_bid_of (allocation (adwords_step s j)) i / B i) - 1) =
+      1/(c-1) * (c powr (total_bid_of (allocation s) i / B i) * c powr (b {i,j} / B i) - 1)"
       by (subst *, subst sum.insert)
          (auto dest: edges_are_Vs simp: ac_simps add_divide_distrib powr_add
-               intro: finite_subset[OF _ finite_subset[OF \<open>matching s \<subseteq> G\<close>]])
+               intro: finite_subset[OF _ finite_subset[OF \<open>allocation s \<subseteq> G\<close>]])
 
-    also from c_gt_1 \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> \<le> 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) * (1 + b {i,j} / B i) - 1)"
+    also from c_gt_1 \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> \<le> 1/(c-1) * (c powr (total_bid_of (allocation s) i / B i) * (1 + b {i,j} / B i) - 1)"
       by (auto intro!: divide_right_mono c_powr_bid_ratio_le)
 
-    also from c_gt_1 \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> = 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) * (1 + b {i,j} / B i) + b {i,j} / ((c-1) * B i)"
+    also from c_gt_1 \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> = 1/(c-1) * (c powr (total_bid_of (allocation s) i / B i) - 1) * (1 + b {i,j} / B i) + b {i,j} / ((c-1) * B i)"
       by (auto simp: field_simps dest: budgets_pos)
 
     also from assms \<open>i \<in> L\<close> \<open>{i,j} \<in> G\<close> have "\<dots> \<le> x s i * (1 + b {i,j} / B i) + b {i,j} / ((c-1) * B i)"
@@ -1019,8 +1050,8 @@ proof (cases j rule: adwords_step_cases[where s = s])
     finally show ?thesis .
   next
     case False
-    with \<open>i \<in> L\<close> \<open>j \<in> R\<close> have *: "{e \<in> matching (adwords_step s j). i \<in> e} = {e \<in> matching s. i \<in> e}"
-      by (auto simp: matching_eq)
+    with \<open>i \<in> L\<close> \<open>j \<in> R\<close> have *: "{e \<in> allocation (adwords_step s j). i \<in> e} = {e \<in> allocation s. i \<in> e}"
+      by (auto simp: allocation_eq)
 
     from new_match assms False show ?thesis
       by (subst *) (simp add: adwords_step_def Let_def)
@@ -1029,22 +1060,22 @@ qed (use assms in \<open>simp_all add: adwords_step_def\<close>)
 
 lemma no_charge_over_budget_adwords_step:
   assumes "i \<in> L" "j \<in> R"
-  assumes total_bid_dual_bound: "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
-  assumes "total_bid_of (matching s) i > B i"
-  shows "{e \<in> matching (adwords_step s j). i \<in> e} = {e \<in> matching s. i \<in> e}"
+  assumes total_bid_dual_bound: "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (allocation s) i / B i) - 1) \<le> x s i"
+  assumes "total_bid_of (allocation s) i > B i"
+  shows "{e \<in> allocation (adwords_step s j). i \<in> e} = {e \<in> allocation s. i \<in> e}"
   using \<open>j \<in> R\<close>
 proof (cases j rule: adwords_step_casesR[where s = s])
   case new_match
   let ?i' = "arg_max_on (\<lambda>i. b {i, j} * (1 - x s i)) {i. {i, j} \<in> G}"
   
-  from \<open>?i' \<in> L\<close> \<open>x s ?i' < 1\<close> have "total_bid_of (matching s) ?i' < B ?i'"
+  from \<open>?i' \<in> L\<close> \<open>x s ?i' < 1\<close> have "total_bid_of (allocation s) ?i' < B ?i'"
     apply (auto dest!: total_bid_dual_bound)
     by (smt (verit) budgets_pos c_gt_1 le_divide_eq_1_pos new_match(5) powr_mono powr_one)
 
-  with \<open>total_bid_of (matching s) i > B i\<close> have "i \<noteq> ?i'"
+  with \<open>total_bid_of (allocation s) i > B i\<close> have "i \<noteq> ?i'"
     by auto
 
-  from new_match have "matching (adwords_step s j) = insert {?i',j} (matching s)"
+  from new_match have "allocation (adwords_step s j) = insert {?i',j} (allocation s)"
     by (simp add: adwords_step_def Let_def)
 
   with \<open>i \<noteq> ?i'\<close> \<open>i \<in> L\<close> \<open>j \<in> R\<close> show ?thesis
@@ -1053,36 +1084,36 @@ qed (use assms in \<open>simp_all add: adwords_step_def\<close>)
 
 lemma max_over_budget_adwords_step:
   assumes "i \<in> L" "j \<in> R"
-  assumes finite_M: "finite (matching s)"
-  assumes under_budget_before: "total_bid_of (matching s) i \<le> B i"
-  assumes over_budget_after: "total_bid_of (matching (adwords_step s j)) i > B i"
-  shows "total_bid_of (matching (adwords_step s j)) i \<le> B i + Max {b e |e. e \<in> matching (adwords_step s j) \<and> i \<in> e}"
+  assumes finite_M: "finite (allocation s)"
+  assumes under_budget_before: "total_bid_of (allocation s) i \<le> B i"
+  assumes over_budget_after: "total_bid_of (allocation (adwords_step s j)) i > B i"
+  shows "total_bid_of (allocation (adwords_step s j)) i \<le> B i + Max {b e |e. e \<in> allocation (adwords_step s j) \<and> i \<in> e}"
   using \<open>j \<in> R\<close>
 proof (cases j rule: adwords_step_casesR[where s = s])
   case new_match
   let ?i' = "arg_max_on (\<lambda>i. b {i, j} * (1 - x s i)) {i. {i, j} \<in> G}"
 
-  from new_match have matching_insert: "matching (adwords_step s j) = insert {?i',j} (matching s)"
+  from new_match have allocation_insert: "allocation (adwords_step s j) = insert {?i',j} (allocation s)"
     by (simp add: adwords_step_def Let_def)
 
   have [simp]: "?i' = i"
   proof (rule ccontr)
     assume "?i' \<noteq> i"
 
-    with \<open>i \<in> L\<close> \<open>?i' \<in> L\<close> \<open>{?i',j} \<in> G\<close> have "total_bid_of (matching (adwords_step s j)) i = total_bid_of (matching s) i"
-      by (subst matching_insert, subst total_bid_of_insert') auto
+    with \<open>i \<in> L\<close> \<open>?i' \<in> L\<close> \<open>{?i',j} \<in> G\<close> have "total_bid_of (allocation (adwords_step s j)) i = total_bid_of (allocation s) i"
+      by (subst allocation_insert, subst total_bid_of_insert') auto
 
     with under_budget_before over_budget_after show False
       by linarith
   qed
 
-  from finite_M \<open>j \<notin> Vs (matching s)\<close>
-  have "total_bid_of (matching (adwords_step s j)) i = b {i,j} + total_bid_of (matching s) i"
-    by (subst matching_insert, simp only: \<open>?i' = i\<close>, subst total_bid_of_insert)
+  from finite_M \<open>j \<notin> Vs (allocation s)\<close>
+  have "total_bid_of (allocation (adwords_step s j)) i = b {i,j} + total_bid_of (allocation s) i"
+    by (subst allocation_insert, simp only: \<open>?i' = i\<close>, subst total_bid_of_insert)
        (auto dest: edges_are_Vs)
 
-  also from finite_M under_budget_before have "\<dots> \<le> Max {b e |e. e \<in> matching (adwords_step s j) \<and> i \<in> e} + B i"
-    by (auto intro!: add_mono Max_ge intro: finite_image_set simp: matching_insert)
+  also from finite_M under_budget_before have "\<dots> \<le> Max {b e |e. e \<in> allocation (adwords_step s j) \<and> i \<in> e} + B i"
+    by (auto intro!: add_mono Max_ge intro: finite_image_set simp: allocation_insert)
 
   finally show ?thesis
     by linarith
@@ -1090,22 +1121,22 @@ qed (use assms in \<open>auto simp: adwords_step_def split: if_splits\<close>)
 
 lemma no_charge_over_budget_adwords:
   assumes "i \<in> L" "set js \<subseteq> R"
-  assumes "matching s \<subseteq> G"
-  assumes "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
-  assumes "total_bid_of (matching s) i > B i"
-  shows "{e \<in> matching (adwords' s js). i \<in> e} = {e \<in> matching s. i \<in> e}"
+  assumes "allocation s \<subseteq> G"
+  assumes "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (allocation s) i / B i) - 1) \<le> x s i"
+  assumes "total_bid_of (allocation s) i > B i"
+  shows "{e \<in> allocation (adwords' s js). i \<in> e} = {e \<in> allocation s. i \<in> e}"
   using assms
 proof (induction js arbitrary: s)
   case (Cons j js)
 
-  then have edges_step: "{e \<in> matching (adwords_step s j). i \<in> e} = {e \<in> matching s. i \<in> e}"
+  then have edges_step: "{e \<in> allocation (adwords_step s j). i \<in> e} = {e \<in> allocation s. i \<in> e}"
     by (intro no_charge_over_budget_adwords_step) auto
 
-  from Cons.prems have "{e \<in> matching (adwords' s (j#js)). i \<in> e} = {e \<in> matching (adwords_step s j). i \<in> e}"
+  from Cons.prems have "{e \<in> allocation (adwords' s (j#js)). i \<in> e} = {e \<in> allocation (adwords_step s j). i \<in> e}"
     by (subst adwords_Cons, intro Cons.IH primal_almost_feasible_adwords_step adwords_step_subgraph)
        (auto simp: edges_step)
 
-  also from Cons.prems have "\<dots> = {e \<in> matching s. i \<in> e}"
+  also from Cons.prems have "\<dots> = {e \<in> allocation s. i \<in> e}"
     by (intro no_charge_over_budget_adwords_step)  auto
 
   finally show ?case .
@@ -1113,38 +1144,38 @@ qed simp
 
 lemma max_over_budget_adwords':
   assumes "i \<in> L" "set js \<subseteq> R"
-  assumes "matching s \<subseteq> G"
-  assumes "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (matching s) i / B i) - 1) \<le> x s i"
-  assumes "total_bid_of (matching s) i > B i \<Longrightarrow> total_bid_of (matching s) i \<le> B i + Max {b e |e. e \<in> matching s \<and> i \<in> e}"
-  assumes "total_bid_of (matching (adwords' s js)) i > B i"
-  shows "total_bid_of (matching (adwords' s js)) i \<le> B i + Max {b e |e. e \<in> matching (adwords' s js) \<and> i \<in> e}"
+  assumes "allocation s \<subseteq> G"
+  assumes "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (allocation s) i / B i) - 1) \<le> x s i"
+  assumes "total_bid_of (allocation s) i > B i \<Longrightarrow> total_bid_of (allocation s) i \<le> B i + Max {b e |e. e \<in> allocation s \<and> i \<in> e}"
+  assumes "total_bid_of (allocation (adwords' s js)) i > B i"
+  shows "total_bid_of (allocation (adwords' s js)) i \<le> B i + Max {b e |e. e \<in> allocation (adwords' s js) \<and> i \<in> e}"
   using assms
 proof (induction js arbitrary: s)
   case (Cons j js)
-  consider (over_budget_before) "total_bid_of (matching s) i > B i" | (under_budget_before) "total_bid_of (matching s) i \<le> B i"
+  consider (over_budget_before) "total_bid_of (allocation s) i > B i" | (under_budget_before) "total_bid_of (allocation s) i \<le> B i"
     by linarith
 
   then show ?case
   proof cases
     case over_budget_before
 
-    with Cons.prems have edges_eq: "{e \<in> matching (adwords' s (j#js)). i \<in> e} = {e \<in> matching s. i \<in> e}"
+    with Cons.prems have edges_eq: "{e \<in> allocation (adwords' s (j#js)). i \<in> e} = {e \<in> allocation s. i \<in> e}"
       by (intro no_charge_over_budget_adwords) auto
 
-    then have "total_bid_of (matching (adwords' s (j#js))) i = total_bid_of (matching s) i"
+    then have "total_bid_of (allocation (adwords' s (j#js))) i = total_bid_of (allocation s) i"
       by simp
 
-    also from Cons.prems over_budget_before have "\<dots> \<le> B i + Max {b e |e. e \<in> matching s \<and> i \<in> e}"
+    also from Cons.prems over_budget_before have "\<dots> \<le> B i + Max {b e |e. e \<in> allocation s \<and> i \<in> e}"
       by blast
 
-    also from edges_eq have "\<dots> = B i + Max {b e |e. e \<in> matching (adwords' s (j#js)) \<and> i \<in> e}"
+    also from edges_eq have "\<dots> = B i + Max {b e |e. e \<in> allocation (adwords' s (j#js)) \<and> i \<in> e}"
       by (metis (mono_tags, lifting) mem_Collect_eq)
 
     finally show ?thesis .
   next
     case under_budget_before
-    consider (over_budget_after_step) "total_bid_of (matching (adwords_step s j)) i > B i" |
-      (under_budget_after_step) "total_bid_of (matching (adwords_step s j)) i \<le> B i"
+    consider (over_budget_after_step) "total_bid_of (allocation (adwords_step s j)) i > B i" |
+      (under_budget_after_step) "total_bid_of (allocation (adwords_step s j)) i \<le> B i"
       by linarith
 
     then show ?thesis
@@ -1166,45 +1197,44 @@ qed simp
 
 lemma max_over_budget_adwords:
   assumes "i \<in> L" "set js \<subseteq> R"
-  assumes "total_bid_of (matching (adwords js)) i > B i"
-  shows "total_bid_of (matching (adwords js)) i \<le> B i + Max {b e |e. e \<in> matching (adwords js) \<and> i \<in> e}"
+  assumes "total_bid_of (allocation (adwords js)) i > B i"
+  shows "total_bid_of (allocation (adwords js)) i \<le> B i + Max {b e |e. e \<in> allocation (adwords js) \<and> i \<in> e}"
   using assms c_gt_1
   by (auto intro!: max_over_budget_adwords' dest: budgets_pos)
 
 lemma adwords_charge_of_ge_total_bid_of:
   assumes "i \<in> L" "set js \<subseteq> R"
-  shows "charge_of (matching (adwords js)) i \<ge> (1 - R_max) * (total_bid_of (matching (adwords js)) i)"
-proof (cases "total_bid_of (matching (adwords js)) i > B i")
+  shows "charge_of (allocation (adwords js)) i \<ge> (1 - R_max) * (total_bid_of (allocation (adwords js)) i)"
+proof (cases "total_bid_of (allocation (adwords js)) i > B i")
   case True
-  with \<open>i \<in> L\<close> have match: "{e. e \<in> matching (adwords js) \<and> i \<in> e} \<noteq> {}"
+  with \<open>i \<in> L\<close> have match: "{e. e \<in> allocation (adwords js) \<and> i \<in> e} \<noteq> {}"
     using budgets_pos by fastforce
 
-  with True \<open>i \<in> L\<close> have "finite {b e |e. e \<in> matching (adwords js) \<and> i \<in> e}" "{b e |e. e \<in> matching (adwords js) \<and> i \<in> e} \<noteq> {}"
-     apply (auto intro!: finite_image_set)
-    by (smt (verit, ccfv_threshold) True assms(1) budgets_pos sum.infinite)
+  with True \<open>i \<in> L\<close> have "finite {b e |e. e \<in> allocation (adwords js) \<and> i \<in> e}" "{b e |e. e \<in> allocation (adwords js) \<and> i \<in> e} \<noteq> {}"
+    by (auto intro!: finite_image_set finite_subset[OF Collect_subset finite_subset[where B = G]] adwords_subgraph)
 
-  then obtain e where e: "e \<in> matching (adwords js)" "i \<in> e" and [simp]: "Max {b e |e. e \<in> matching (adwords js) \<and> i \<in> e} = b e"
+  then obtain e where e: "e \<in> allocation (adwords js)" "i \<in> e" and [simp]: "Max {b e |e. e \<in> allocation (adwords js) \<and> i \<in> e} = b e"
     using Max_in by auto
 
-  have "matching (adwords js) \<subseteq> G"
+  have "allocation (adwords js) \<subseteq> G"
     by (auto intro!: adwords_subgraph)
 
-  with bipartite_graph have "bipartite (matching (adwords js)) L R"
+  with bipartite_graph have "bipartite (allocation (adwords js)) L R"
     by (auto intro: bipartite_subgraph)
 
   with e \<open>i \<in> L\<close> obtain j where [simp]: "e = {i,j}" "j \<in> R"
     by (auto elim: bipartite_edgeE)
 
-  from \<open>i \<in> L\<close> e \<open>matching (adwords js) \<subseteq> G\<close> have "total_bid_of (matching (adwords js)) i * (1 - R_max) \<le>
-    total_bid_of (matching (adwords js)) i * (B i / (B i + Max {b e |e. e \<in> matching (adwords js) \<and> i \<in> e}))"
+  from \<open>i \<in> L\<close> e \<open>allocation (adwords js) \<subseteq> G\<close> have "total_bid_of (allocation (adwords js)) i * (1 - R_max) \<le>
+    total_bid_of (allocation (adwords js)) i * (B i / (B i + Max {b e |e. e \<in> allocation (adwords js) \<and> i \<in> e}))"
     by (intro mult_left_mono)
        (auto intro: budget_over_budget_plus_bid_ge)
 
   also from True assms have "\<dots> \<le> B i"
-    apply (auto dest!: max_over_budget_adwords simp: )
+    apply (auto dest!: max_over_budget_adwords)
     by (smt (verit, ccfv_SIG) assms(1) budgets_pos frac_less2 linordered_semiring_strict_class.mult_pos_pos nonzero_mult_div_cancel_left)
 
-  also from True have "\<dots> = charge_of (matching (adwords js)) i"
+  also from True have "\<dots> = charge_of (allocation (adwords js)) i"
     by simp
 
   finally show ?thesis
@@ -1216,39 +1246,44 @@ next
     by (auto intro!: mult_right_le adwords_subgraph)
 qed
 
-lemma adwords_matching_value_ge:
+lemma adwords_allocation_value_ge:
   assumes "set js \<subseteq> R"
-  shows "matching_value (matching (adwords js)) \<ge> (1 - R_max) * (bids_vec \<bullet> primal_sol (matching (adwords js)))"
+  shows "allocation_value (allocation (adwords js)) \<ge> (1 - R_max) * (bids_vec \<bullet> primal_sol (allocation (adwords js)))"
 proof -
-  have subgraph[intro]: "matching (adwords js) \<subseteq> G"
+  have subgraph[intro]: "allocation (adwords js) \<subseteq> G"
     by (auto intro!: adwords_subgraph)
 
-  have "(1 - R_max) * (bids_vec \<bullet> primal_sol (matching (adwords js))) =
-    (\<Sum>i\<in>L. (1 - R_max) * total_bid_of (matching (adwords js)) i)"
+  have "(1 - R_max) * (bids_vec \<bullet> primal_sol (allocation (adwords js))) =
+    (\<Sum>i\<in>L. (1 - R_max) * total_bid_of (allocation (adwords js)) i)"
     by (auto simp: sum_edges_eq_sum_vs[OF subgraph] primal_dot_bids_eq_sum_edges[OF subgraph] sum_distrib_left)
 
-  also from assms have "\<dots> \<le> (\<Sum>i\<in>L. charge_of (matching (adwords js)) i)"
+  also from assms have "\<dots> \<le> (\<Sum>i\<in>L. charge_of (allocation (adwords js)) i)"
     by (auto intro: sum_mono adwords_charge_of_ge_total_bid_of)
 
   finally show ?thesis 
-    unfolding matching_value_def .
+    unfolding allocation_value_def .
 qed
 
-theorem adwords_competitive_ratio:
-  assumes "max_value_matching M"
-  shows "matching_value (matching (adwords \<pi>)) / matching_value M \<ge> (1 - 1/c) * (1 - R_max)"
-  using assms
-proof (intro mult_imp_le_div_pos max_value_matching_pos_value)
-  from assms c_gt_1 R_max_le_1 have "(1 - 1 / c) * (1 - R_max) * matching_value M \<le> (1 - 1/c) * (1 - R_max) * (constraint_vec \<bullet> (dual_sol (adwords \<pi>)))"
-    by (auto intro!: mult_left_mono max_value_matching_bound_by_feasible_dual dual_feasible dual_nonneg)
+lemma adwords_integral:
+  shows "one_sided_matching G (allocation (adwords \<pi>)) R"
+  using perm
+  by (auto intro: one_sided_matching_adwords dest: permutations_of_setD)
 
-  also have "\<dots> = (1 - R_max) * (bids_vec \<bullet> primal_sol (matching (adwords \<pi>)))"
+theorem adwords_competitive_ratio:
+  assumes "max_value_allocation M"
+  shows "allocation_value (allocation (adwords \<pi>)) / allocation_value M \<ge> (1 - 1/c) * (1 - R_max)"
+  using assms
+proof (intro mult_imp_le_div_pos max_value_allocation_pos_value)
+  from assms c_gt_1 R_max_le_1 have "(1 - 1 / c) * (1 - R_max) * allocation_value M \<le> (1 - 1/c) * (1 - R_max) * (constraint_vec \<bullet> (dual_sol (adwords \<pi>)))"
+    by (auto intro!: mult_left_mono max_value_allocation_bound_by_feasible_dual dual_feasible dual_nonneg)
+
+  also have "\<dots> = (1 - R_max) * (bids_vec \<bullet> primal_sol (allocation (adwords \<pi>)))"
     by (simp flip: dual_primal_times_adwords)
 
-  also from perm have "\<dots> \<le> matching_value (matching (adwords \<pi>))"
-    by (auto intro: adwords_matching_value_ge dest: permutations_of_setD)
+  also from perm have "\<dots> \<le> allocation_value (allocation (adwords \<pi>))"
+    by (auto intro: adwords_allocation_value_ge dest: permutations_of_setD)
 
-  finally show "(1 - 1 / c) * (1 - R_max) * matching_value M \<le> matching_value (matching (adwords \<pi>))" .
+  finally show "(1 - 1 / c) * (1 - R_max) * allocation_value M \<le> allocation_value (allocation (adwords \<pi>))" .
 qed
 end
 

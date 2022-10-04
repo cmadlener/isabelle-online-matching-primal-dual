@@ -70,7 +70,7 @@ lemma primal_dot_coeffs_eq_value:
   unfolding scalar_prod_def primal_sol_def
   using assms
   by (auto intro!: sum.reindex_bij_witness[where j = "from_nat_into G" and i = "to_nat_on G"]
-           intro: to_nat_on_from_nat_into_less simp: m_def to_nat_on_less_card countable_finite)
+           intro: to_nat_on_from_nat_into_less simp: to_nat_on_less_card countable_finite)
 
 lemma matching_value_bound_by_feasible_dual:
   fixes y :: "real vec"
@@ -103,4 +103,5 @@ lemma max_value_matching_bound_by_feasible_dual:
   by (auto intro: matching_value_bound_by_feasible_dual dest: max_value_matchingD)
 
 end
+
 end
