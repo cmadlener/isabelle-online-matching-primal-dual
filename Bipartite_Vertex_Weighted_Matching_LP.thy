@@ -10,7 +10,7 @@ begin
 abbreviation "matching_value M \<equiv> \<Sum>e\<in>M. v (THE l. l \<in> L \<and> l \<in> e)"
 
 definition "max_value_matching M \<longleftrightarrow> M \<subseteq> G \<and> matching M \<and>
-  (\<forall>M'. M' \<subseteq> G \<and> matching M \<longrightarrow> matching_value M' \<le> matching_value M)"
+  (\<forall>M'. M' \<subseteq> G \<and> matching M' \<longrightarrow> matching_value M' \<le> matching_value M)"
 
 abbreviation vertex_weighted_coeffs :: "real vec" where
   "vertex_weighted_coeffs \<equiv> vec m (\<lambda>i. v (THE l. l \<in> L \<and> l \<in> from_nat_into G i))"
