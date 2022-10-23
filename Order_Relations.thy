@@ -98,9 +98,9 @@ lemma linorder_on'_Restr:
   "linorder_on' S r \<Longrightarrow> linorder_on' S (Restr r S)"
   unfolding linorder_on'_def
   by (auto intro: refl_on'_Restr antisym_subset trans_Restr total_on_Restr)
-  
+
 definition is_min_rel :: "('a \<Rightarrow> bool) \<Rightarrow> 'a rel \<Rightarrow> 'a \<Rightarrow> bool" where
-  "is_min_rel P r x = (P x \<and> \<not>(\<exists>y. P y \<and> (y,x) \<in> r \<and> (x,y) \<notin> r))"
+  "is_min_rel P r x = (P x \<and> (\<nexists>y. P y \<and> (y,x) \<in> r \<and> (x,y) \<notin> r))"
 
 definition min_rel :: "('a \<Rightarrow> bool) \<Rightarrow> 'a rel \<Rightarrow> 'a" where
   "min_rel P r = (SOME x. is_min_rel P r x)"

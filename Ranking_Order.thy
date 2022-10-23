@@ -9,9 +9,9 @@ sledgehammer_params [provers = cvc4 vampire verit e spass z3 zipperposition]
 definition step :: "('a \<times> 'a) set \<Rightarrow> 'a graph \<Rightarrow> 'a graph \<Rightarrow> 'a \<Rightarrow> 'a graph" where
   "step r G M j = (
     let ns = {i. i \<notin> Vs M \<and> {i,j} \<in> G} in
-    if ns \<noteq> {} \<and> j \<notin> Vs M
-    then let i = min_on_rel ns r in insert {i,j} M
-    else M
+      if ns \<noteq> {} \<and> j \<notin> Vs M
+      then let i = min_on_rel ns r in insert {i,j} M
+      else M
   )"
 
 definition "ranking' r G M \<equiv> foldl (step r G) M"
@@ -99,6 +99,11 @@ lemma step_insertI:
   shows "step r G M j = insert {i,j} M"
   using assms
   by (simp add: step_def)
+
+lemma step_online:
+  "step r G M j = step r {e \<in> G. j \<in> e} M j"
+  unfolding step_def
+  by simp
 
 lemma step_subgraph:
   assumes fin: "finite (Vs G)"
@@ -499,7 +504,7 @@ proof -
     case False
 
     have i'_unmatched_pre: "i' \<notin> Vs (ranking r (G \<setminus> {i}) pre)"
-    proof (rule ccontr, simp)
+    proof (rule ccontr, simp only: not_not)
       assume "i' \<in> Vs (ranking r (G \<setminus> {i}) pre)"
       then obtain e where e: "e \<in> ranking r (G \<setminus> {i}) pre" "i' \<in> e"
         by (auto elim: vs_member_elim)
@@ -923,6 +928,75 @@ proof -
 
   with \<open>i' = ?min\<close> \<open>i'' = ?min'\<close> show "(i',i'') \<in> r"
     by simp
+qed
+
+lemma online_matched_mono:
+  assumes linorder: "linorder_on L r"
+  assumes perm: "\<pi> \<in> permutations_of_set R"
+  assumes "i \<in> L" "j \<in> R"
+  assumes "j \<in> Vs (ranking r (G \<setminus> {i}) \<pi>)"
+  shows "j \<in> Vs (ranking r G \<pi>)"
+proof -
+  let ?M' = "ranking r (G \<setminus> {i}) \<pi>"
+
+  from perm \<open>j \<in> R\<close> obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
+    by (metis permutations_of_setD split_list_distinct)
+
+  let ?ranking_pre = "ranking r G pre"
+  let ?ranking_pre' = "ranking r (G \<setminus> {i}) pre"
+
+  from \<pi>_decomp perm linorder \<open>j \<in> R\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
+    by (intro unmatched_R_in_ranking_if ballI preorder_on_neighborsI)
+       (auto dest: permutations_of_setD linorder_on_imp_preorder_on)
+
+  from \<pi>_decomp perm linorder \<open>j \<in> R\<close> have j_unmatched_pre': "j \<notin> Vs ?ranking_pre'"
+    by (intro unmatched_R_in_ranking_if ballI preorder_on_neighborsI)
+       (auto dest: permutations_of_setD remove_vertices_subgraph' linorder_on_imp_preorder_on)
+
+  let ?ns = "{i. i \<notin> Vs ?ranking_pre \<and> {i,j} \<in> G}"
+  and ?ns' = "{i'. i' \<notin> Vs ?ranking_pre' \<and> {i',j} \<in> G \<setminus> {i}}"
+
+  from \<open>j \<in> R\<close> have "?ns \<subseteq> L"
+    by (intro unmatched_neighbors_L subset_refl)
+
+  from \<open>j \<in> R\<close> have "?ns' \<subseteq> L - {i}"
+    by (auto dest: neighbors_right_subset_left[OF remove_vertices_subgraph] edges_are_Vs intro: remove_vertices_not_vs')
+
+  have "?ns' \<noteq> {}"
+  proof (rule ccontr, simp only: not_not)
+    assume "?ns' = {}"
+
+    then have step_eq: "step r (G \<setminus> {i}) ?ranking_pre' j = ?ranking_pre'"
+      by (simp add: step_def)
+
+    from j_unmatched_pre' \<pi>_decomp perm linorder \<open>j \<in> R\<close> have "j \<notin> Vs ?M'"
+      by (simp only: \<pi>_decomp ranking_append ranking_Cons step_eq,
+          intro unmatched_R_in_ranking_if[where M = ?ranking_pre'] ballI preorder_on_neighborsI)
+         (auto dest: remove_vertices_subgraph' permutations_of_setD linorder_on_imp_preorder_on)
+
+    with \<open>j \<in> Vs ?M'\<close> show False
+      by blast
+  qed
+
+  from linorder perm \<pi>_decomp \<open>i \<in> L\<close> have "L - {i} - Vs ?ranking_pre' \<subseteq> L - Vs ?ranking_pre"
+    by (intro monotonicity_order_ranking ballI linorder_on_neighborsI)
+       (auto dest: permutations_of_setD)
+    
+  with \<open>?ns \<subseteq> L\<close> \<open>?ns' \<subseteq> L - {i}\<close> have "?ns' \<subseteq> ?ns"
+    by (auto dest: remove_vertices_subgraph')
+
+  with \<open>?ns' \<noteq> {}\<close> obtain i' where "i' \<in> ?ns"
+    by blast
+
+  then have "{i',j} \<in> G" "i' \<notin> Vs ?ranking_pre"
+    by auto
+
+  with j_unmatched_pre have "j \<in> Vs (step r G ?ranking_pre j)"
+    by (intro step_matches_if_possible[OF j_unmatched_pre \<open>{i',j} \<in> G\<close>])
+       auto
+
+  with \<pi>_decomp show "j \<in> Vs (ranking r G \<pi>)"
+    by (auto simp: ranking_append ranking_Cons intro: ranking_mono_vs)
 qed
 
 lemma step_Restr_to_vertices:

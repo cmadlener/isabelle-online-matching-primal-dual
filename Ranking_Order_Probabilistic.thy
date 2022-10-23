@@ -24,6 +24,13 @@ locale wf_ranking_order_prob = bipartite_vertex_priorities +
   assumes F_gt_0: "0 < F"
 begin
 
+definition ranking_prob :: "'a graph measure" where
+  "ranking_prob \<equiv> do {
+    Y \<leftarrow> M\<^sub>Y;
+    let r = linorder_from_keys L Y;
+    return (count_space {M. M \<subseteq> G}) (ranking r G \<pi>)
+  }"
+
 definition dual_sol :: "('a \<Rightarrow> real) \<Rightarrow> 'a graph \<Rightarrow> real vec" where
   "dual_sol Y M \<equiv> vec n (\<lambda>i.
     if Vs_enum_inv i \<in> Vs M
@@ -321,67 +328,8 @@ proof (cases "j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \
   from \<open>{i,j} \<in> G\<close> \<open>j \<in> R\<close> have index_j: "?j < n" "\<not> ?j < card L"
     by (auto intro: Vs_enum_less_n dest: edges_are_Vs, simp add: Vs_enum_R)
 
-  have j_matched: "j \<in> Vs ?M"
-  proof -
-    from perm \<open>j \<in> R\<close> obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
-      by (metis permutations_of_setD split_list_distinct)
-
-    let ?ranking_pre = "ranking (linorder_from_keys L Y) G pre"
-    let ?ranking_pre' = "ranking (linorder_from_keys L Y) (G \<setminus> {i}) pre"
-
-    from \<pi>_decomp perm \<open>j \<in> R\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
-      by (intro unmatched_R_in_ranking_if ballI preorder_on_neighborsI)
-         (auto dest: permutations_of_setD)
-
-    from \<pi>_decomp perm \<open>j \<in> R\<close> have j_unmatched_pre': "j \<notin> Vs ?ranking_pre'"
-      by (intro unmatched_R_in_ranking_if ballI preorder_on_neighborsI)
-         (auto dest: permutations_of_setD remove_vertices_subgraph')
-
-    let ?ns = "{i. i \<notin> Vs ?ranking_pre \<and> {i,j} \<in> G}"
-    and ?ns' = "{i'. i' \<notin> Vs ?ranking_pre' \<and> {i',j} \<in> G \<setminus> {i}}"
-
-    from \<open>j \<in> R\<close> have "?ns \<subseteq> L"
-      by (intro unmatched_neighbors_L subset_refl)
-
-    from \<open>j \<in> R\<close> have "?ns' \<subseteq> L - {i}"
-      by (auto dest: neighbors_right_subset_left[OF remove_vertices_subgraph] edges_are_Vs intro: remove_vertices_not_vs')
-
-    have "?ns' \<noteq> {}"
-    proof (rule ccontr, simp only: not_not)
-      assume "?ns' = {}"
-
-      then have step_eq: "step (linorder_from_keys L Y) (G \<setminus> {i}) ?ranking_pre' j = ?ranking_pre'"
-        by (simp add: step_def)
-
-      from j_unmatched_pre' \<pi>_decomp perm \<open>j \<in> R\<close> have "j \<notin> Vs ?M'"
-        by (simp only: \<pi>_decomp ranking_append ranking_Cons step_eq,
-            intro unmatched_R_in_ranking_if[where M = ?ranking_pre'] ballI preorder_on_neighborsI)
-           (auto dest: remove_vertices_subgraph' permutations_of_setD)
-
-      with True show False
-        by blast
-    qed
-
-    from linorder perm \<pi>_decomp \<open>i \<in> L\<close> have "L - {i} - Vs ?ranking_pre' \<subseteq> L - Vs ?ranking_pre"
-      by (intro monotonicity_order_ranking ballI linorder_on_neighborsI)
-         (auto dest: permutations_of_setD)
-      
-    with \<open>?ns \<subseteq> L\<close> \<open>?ns' \<subseteq> L - {i}\<close> have "?ns' \<subseteq> ?ns"
-      by (auto dest: remove_vertices_subgraph')
-
-    with \<open>?ns' \<noteq> {}\<close> obtain i' where "i' \<in> ?ns"
-      by blast
-
-    then have "{i',j} \<in> G" "i' \<notin> Vs ?ranking_pre"
-      by auto
-
-    with j_unmatched_pre have "j \<in> Vs (step (linorder_from_keys L Y) G ?ranking_pre j)"
-      by (intro step_matches_if_possible[OF j_unmatched_pre \<open>{i',j} \<in> G\<close>])
-         auto
-
-    with \<pi>_decomp show "j \<in> Vs ?M"
-      by (auto simp: ranking_append ranking_Cons intro: ranking_mono_vs)
-  qed
+  from assms True perm have j_matched: "j \<in> Vs ?M"
+    by (auto intro: online_matched_mono)
 
   have bipartite_M: "bipartite ?M L R" and bipartite_M': "bipartite ?M' L R"
     by (auto intro!: bipartite_ranking dest: remove_vertices_subgraph')
@@ -444,8 +392,7 @@ proof (rule measurable_compose[of "linorder_from_keys L" _ "count_space (preorde
 next
   case 2
   from finite_subsets \<open>set js \<subseteq> R\<close> \<open>H \<subseteq> G\<close> show ?case
-    by (subst measurable_count_space_eq2)
-       (auto dest: ranking_subgraph' preorders_onD)
+    by (auto dest: ranking_subgraph' preorders_onD)
 qed
 
 lemma ranking_measurable_remove_vertices:
@@ -470,7 +417,7 @@ lemmas ranking_measurable = ranking_measurable'[OF subset_refl]
 lemma ranking_measurable_fun_upd:
   assumes "i \<in> L"
   assumes "set js \<subseteq> R"
-  assumes "Y \<in> space (Pi\<^sub>M (L - {i}) (\<lambda>_. U))"
+  assumes "Y \<in> space (\<Pi>\<^sub>M i \<in> L - {i}. U)"
   shows "(\<lambda>y. ranking (linorder_from_keys L (Y(i:=y))) G js) \<in> U \<rightarrow>\<^sub>M count_space {M. M \<subseteq> G}"
   by (rule measurable_compose[OF measurable_fun_upd[where I = L and J = "L - {i}" and M = "\<lambda>_.U"]])
      (use assms finite_L in \<open>auto intro: ranking_measurable\<close>)
@@ -491,6 +438,16 @@ lemmas in_vertices_Measurable_pred_remove_vertices[measurable] = measurable_comp
 
 lemmas in_vertices_borel_measurable_fun_upd[measurable] = measurable_compose[OF ranking_measurable_fun_upd in_vertices_borel_measurable_count_space]
 lemmas in_vertices_Measurable_pred_fun_upd[measurable] = measurable_compose[OF ranking_measurable_fun_upd in_vertices_Measurable_pred_count_space]
+
+lemma ranking_prob_distr:
+  "ranking_prob = distr M\<^sub>Y (count_space {M. M \<subseteq> G}) (\<lambda>Y. ranking (linorder_from_keys L Y) G \<pi>)"
+  unfolding ranking_prob_def
+  using ranking_measurable
+  by (auto simp: bind_return_distr')
+
+sublocale ranking_prob_space: prob_space ranking_prob
+  by (auto simp: ranking_prob_distr intro!: prob_space_distr intro: ranking_measurable)
+
 
 lemma online_matched_with_borel_iff:
   fixes Y :: "'a \<Rightarrow> real" and X :: "'a set"
@@ -654,8 +611,8 @@ qed
 lemma dual_component_online_in_sets:
   assumes "j \<in> R"
   assumes "A \<in> sets (borel::real measure)"
-  shows  "{Y \<in> space (Pi\<^sub>M (L - X) (\<lambda>i. uniform_measure lborel {0..1})). j \<in> Vs (ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>) \<and> 
-    Y (THE l. {l, j} \<in> ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>) \<in> A} \<in> sets (Pi\<^sub>M (L - X) (\<lambda>i. uniform_measure lborel {0..1}))"
+  shows  "{Y \<in> space (\<Pi>\<^sub>M i \<in> (L - X).  U). j \<in> Vs (ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>) \<and> 
+    Y (THE l. {l, j} \<in> ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>) \<in> A} \<in> sets (\<Pi>\<^sub>M i \<in> (L - X). U)"
 proof -
   from \<open>j \<in> R\<close> perm obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
     by (metis permutations_of_setD split_list_distinct)
@@ -664,7 +621,7 @@ proof -
     by auto
 
   show ?thesis
-  proof (intro predE, subst online_matched_with_borel_iff[OF assms \<pi>_decomp], intro pred_intros_finite pred_intros_logic, goal_cases)
+  proof (subst online_matched_with_borel_iff[OF assms \<pi>_decomp], intro predE pred_intros_finite pred_intros_logic, goal_cases)
     case (2 i)
     with set_pre show ?case
       by measurable
@@ -739,13 +696,13 @@ lemma measurable_dual_component_split_dim:
 
 lemma measurable_dual_component_fun_upd:
   assumes "i \<in> L"
-  assumes "Y \<in> space (Pi\<^sub>M (L - {i}) (\<lambda>i. U))"
+  assumes "Y \<in> space (\<Pi>\<^sub>M i \<in> L - {i}.  U)"
   assumes "k < n"
   shows "(\<lambda>y. dual_sol (Y(i:=y)) (ranking (linorder_from_keys L (Y(i:=y))) G \<pi>) $ k) \<in> borel_measurable U"
   by (rule measurable_compose[OF _ measurable_dual_component])
      (use assms in measurable)
 
-lemma measurable_y\<^sub>c[measurable]: "j \<in> R \<Longrightarrow> (\<lambda>Y. y\<^sub>c Y \<pi> i j) \<in> borel_measurable (Pi\<^sub>M (L - {i}) (\<lambda>i. U))"
+lemma measurable_y\<^sub>c[measurable]: "j \<in> R \<Longrightarrow> (\<lambda>Y. y\<^sub>c Y \<pi> i j) \<in> borel_measurable (\<Pi>\<^sub>M i \<in> L - {i}. U)"
 proof (unfold y\<^sub>c_def, subst measurable_If_restrict_space_iff, subst ranking_Restr_to_vertices[symmetric], goal_cases)
   case 2
   then show ?case
@@ -760,8 +717,8 @@ next
     by (subst ranking_Restr_to_vertices[symmetric])
        (auto intro: preorder_on_imp_preorder_on' simp: linorder_from_keys_Restr)
 
-  from \<open>set \<pi> \<subseteq> R\<close> have **: "restrict_space (Pi\<^sub>M (L - {i}) (\<lambda>i. U)) {Y. j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \<pi>)} =
-    restrict_space (Pi\<^sub>M (L - {i}) (\<lambda>i. U)) {Y. j \<in> Vs (ranking (linorder_from_keys (L - {i}) Y) (G \<setminus> {i}) \<pi>)}"
+  from \<open>set \<pi> \<subseteq> R\<close> have **: "restrict_space (\<Pi>\<^sub>M i \<in> L - {i}.  U) {Y. j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) \<pi>)} =
+    restrict_space (\<Pi>\<^sub>M i \<in> L - {i}.  U) {Y. j \<in> Vs (ranking (linorder_from_keys (L - {i}) Y) (G \<setminus> {i}) \<pi>)}"
     by (subst ranking_Restr_to_vertices[symmetric])
        (auto intro: preorder_on_imp_preorder_on' simp: linorder_from_keys_Restr)
 
@@ -817,7 +774,7 @@ lemma AE_dual_sol_funcset:
      (auto dest: dual_sol_funcset_if_funcset)
 
 lemma AE_dual_sol_split_dim_funcset:
-  shows "AE (y, Y) in U \<Otimes>\<^sub>M Pi\<^sub>M (L - {i}) (\<lambda>i. U). ($) (dual_sol (Y(i:=y)) (ranking (linorder_from_keys L (Y(i:=y))) G \<pi>)) \<in> {..<n} \<rightarrow> {0..1/F}"
+  shows "AE (y, Y) in U \<Otimes>\<^sub>M (\<Pi>\<^sub>M i \<in> L - {i}. U). ($) (dual_sol (Y(i:=y)) (ranking (linorder_from_keys L (Y(i:=y))) G \<pi>)) \<in> {..<n} \<rightarrow> {0..1/F}"
   using AE_split_dim_funcset
   by eventually_elim
      (auto dest: dual_sol_funcset_if_funcset[where X = "{}", simplified])
@@ -829,7 +786,7 @@ lemma AE_dual_sol_U_funcset:
   by (intro eventually_mono[OF AE_U_in_range] dual_sol_funcset_if_funcset[where X = "{}", simplified] funcset_update)
 
 lemma integrable_g[simp]: "integrable U g"
-proof (intro integrableI_real_bounded, goal_cases)
+proof (intro integrableI_nonneg, goal_cases)
   case 2
   from AE_U_in_range show ?case
     by eventually_elim
@@ -892,7 +849,7 @@ lemma integrable_dual_component_U:
   assumes "i \<in> L"
   assumes "k < n"
   shows "integrable U (\<lambda>y. dual_sol (Y(i:=y)) (ranking (linorder_from_keys L (Y(i:=y))) G \<pi>) $ k)"
-proof (intro integrableI_real_bounded measurable_dual_component_fun_upd, goal_cases)
+proof (intro integrableI_nonneg measurable_dual_component_fun_upd, goal_cases)
   case 4
   from Y_funcset \<open>k < n\<close> show ?case
     by (auto intro!: eventually_mono[OF AE_dual_sol_U_funcset])
@@ -907,8 +864,8 @@ qed (use assms in auto)
 
 lemma integrable_integral_bound_but_i:
   assumes "j \<in> R"
-  shows "integrable (Pi\<^sub>M (L - {i}) (\<lambda>i. U)) (\<lambda>Y. \<integral>y. g y * indicat_real {0..<y\<^sub>c Y \<pi> i j} y \<partial>U + 1 - g (y\<^sub>c Y \<pi> i j))"
-proof (intro Bochner_Integration.integrable_add Bochner_Integration.integrable_diff integrableI_real_bounded component_prob_space.borel_measurable_lebesgue_integral, goal_cases)
+  shows "integrable (\<Pi>\<^sub>M i \<in> L - {i}. U) (\<lambda>Y. \<integral>y. g y * indicat_real {0..<y\<^sub>c Y \<pi> i j} y \<partial>U + 1 - g (y\<^sub>c Y \<pi> i j))"
+proof (intro Bochner_Integration.integrable_add Bochner_Integration.integrable_diff integrableI_nonneg component_prob_space.borel_measurable_lebesgue_integral, goal_cases)
   case 1
   then show ?case
   proof (subst split_comp_eq[symmetric],
@@ -947,48 +904,13 @@ next
 next
   case 9
   
-  from assms have "\<integral>\<^sup>+ x. g (y\<^sub>c x \<pi> i j) \<partial>Pi\<^sub>M (L - {i}) (\<lambda>i. U) \<le> 1"
+  from assms have "\<integral>\<^sup>+ x. g (y\<^sub>c x \<pi> i j) \<partial>\<Pi>\<^sub>M i \<in> L - {i}. U \<le> 1"
     by (auto intro!: subprob_space.nn_integral_le_const prob_space_imp_subprob_space prob_space_PiM_U 
                      eventually_mono[OF AE_PiM_subset_L_U_funcset] g_less_eq_OneI dest: y\<^sub>c_bounded)
 
   then show ?case
     by (simp add: order_le_less_trans)
 qed (use \<open>j \<in> R\<close> in \<open>simp_all\<close>)
-
-lemma linorder_on_linorder_from_keys_insert:
-  assumes linorder: "linorder_on A (linorder_from_keys A f)"
-  assumes "y \<notin> f ` A"
-  assumes "a \<notin> A"
-  shows "linorder_on (insert a A) (linorder_from_keys (insert a A) (f(a:=y)))"
-proof -
-  from \<open>a \<notin> A\<close> have linorder_from_insert: "linorder_from_keys (insert a A) (f(a:=y)) = linorder_from_keys A f \<union> {(a,a)} \<union> {(a,b) | b. b \<in> A \<and> y \<le> f b} \<union> {(b,a) | b. b \<in> A \<and> f b \<le> y}"
-    unfolding linorder_from_keys_def
-    by (auto split: if_splits)
-
-  show "linorder_on (insert a A) (linorder_from_keys (insert a A) (f(a:=y)))"
-    unfolding linorder_on_def
-  proof (intro conjI, goal_cases)
-    case 1
-    with linorder show ?case
-      by (subst linorder_from_insert)
-         (auto simp: linorder_on_def refl_on_def)
-  next
-    case 2
-    with linorder \<open>a \<notin> A\<close> \<open>y \<notin> f ` A\<close> show ?case
-      by (subst linorder_from_insert)
-         (auto simp: linorder_on_def antisym_def dest: refl_on_domain)
-  next
-    case 3
-    with linorder \<open>a \<notin> A\<close> \<open>y \<notin> f ` A\<close> show ?case
-      by (subst linorder_from_insert, unfold trans_def)
-         (auto simp: linorder_from_keys_def linorder_on_def)
-  next
-    case 4
-    with linorder show ?case
-      by (subst linorder_from_insert, unfold linorder_on_def total_on_def)
-         auto
-  qed
-qed
 
 lemma AE_linorder_on_linorder_from_keys_add_dim:
   assumes "i \<in> L"
@@ -1027,7 +949,7 @@ proof -
     by (simp add: insert_absorb)
 
   also have "\<dots> = integral\<^sup>L (distr (U \<Otimes>\<^sub>M (\<Pi>\<^sub>M i \<in> (L - {i}). U))
-    (Pi\<^sub>M (insert i (L - {i})) (\<lambda>_. U))
+    (\<Pi>\<^sub>M i \<in> insert i (L - {i}). U)
     (\<lambda>(y,Y). Y(i := y))) ?i_plus_j"
     by (intro arg_cong2[where f = "integral\<^sup>L"] distr_pair_PiM_eq_PiM[symmetric])
        auto
@@ -1066,7 +988,7 @@ proof -
   next
     case 2
     show ?case
-    proof (intro integrableI_real_bounded component_prob_space.borel_measurable_lebesgue_integral, goal_cases)
+    proof (intro integrableI_nonneg component_prob_space.borel_measurable_lebesgue_integral, goal_cases)
       case 1
       from \<open>i \<in> L\<close> \<open>Vs_enum i < n\<close> \<open>Vs_enum j < n\<close> show ?case
         using measurable_dual_component_split_dim
@@ -1083,7 +1005,7 @@ proof -
 
       have "\<integral>\<^sup>+Y. (component_prob_space.expectation (\<lambda>y. dual_sol (Y(i := y)) (ranking (linorder_from_keys L (Y(i := y))) G \<pi>) $ Vs_enum i +
                                               dual_sol (Y(i := y)) (ranking (linorder_from_keys L (Y(i := y))) G \<pi>) $ Vs_enum j)) 
-            \<partial>Pi\<^sub>M (L - {i}) (\<lambda>i. U) \<le> \<integral>\<^sup>+_. 2/F \<partial>Pi\<^sub>M (L - {i}) (\<lambda>i. U)"
+            \<partial>\<Pi>\<^sub>M i \<in> L - {i}. U \<le> \<integral>\<^sup>+_. 2/F \<partial>\<Pi>\<^sub>M i \<in> L - {i}. U"
       proof (intro nn_integral_mono_AE eventually_mono[OF AE_PiM_subset_L_U_funcset[OF Diff_subset]], simp, 
              intro integral_real_bounded component_prob_space.nn_integral_le_const eventually_mono[OF AE_U_in_range], goal_cases)
         case (3 Y y)
@@ -1107,7 +1029,7 @@ proof -
   next
     case 3
     from finite_L have AE_Y_props: 
-      "AE Y in PiM (L - {i}) (\<lambda>i. U). Y \<in> space (PiM (L - {i}) (\<lambda>i. U)) \<and> 
+      "AE Y in \<Pi>\<^sub>M i \<in> L - {i}. U. Y \<in> space (\<Pi>\<^sub>M i \<in> L - {i}. U) \<and> 
                                       Y \<in> L-{i} \<rightarrow> {0..1} \<and> 
                                       linorder_on (L - {i}) (linorder_from_keys (L - {i}) Y)"
       by (auto intro: AE_PiM_subset_L_U_funcset intro!: AE_distrD[OF _ almost_everywhere_linorder[where B = "L - {i}"]])
@@ -1116,7 +1038,7 @@ proof -
     show ?case
     proof (rule eventually_mono[OF AE_Y_props])
       fix Y :: "'a \<Rightarrow> real"
-      assume Y: "Y \<in> space (PiM (L - {i}) (\<lambda>i. U)) \<and> Y \<in> L-{i} \<rightarrow> {0..1} \<and> linorder_on (L - {i}) (linorder_from_keys (L - {i}) Y)"
+      assume Y: "Y \<in> space (\<Pi>\<^sub>M i \<in> L - {i}. U) \<and> Y \<in> L-{i} \<rightarrow> {0..1} \<and> linorder_on (L - {i}) (linorder_from_keys (L - {i}) Y)"
 
       have integrable_offline_bound: "integrable U (\<lambda>y. g y / F * indicat_real {0..<y\<^sub>c Y \<pi> i j} y)"
         by (auto intro!: integrable_divide intro: integrable_real_mult_indicator)
@@ -1310,6 +1232,23 @@ proof -
 
   with F_gt_0 max_card_bound \<open>card M > 0\<close> show ?thesis
     by (auto intro: mult_imp_le_div_pos mult_left_mono simp: mult.commute)
+qed
+
+theorem ranking_prob_F_competitive:
+  assumes "G \<noteq> {}"
+  assumes "max_card_matching G M"
+
+  shows "ranking_prob_space.expectation card / card M \<ge> F"
+proof -
+  from assms have "F \<le> expectation (\<lambda>Y. card (ranking (linorder_from_keys L Y) G \<pi>)) / card M"
+    by (auto intro: ranking_F_competitive)
+
+  also have "\<dots> = ranking_prob_space.expectation card / card M"
+    unfolding ranking_prob_distr
+    by (subst integral_distr)
+       (auto intro: ranking_measurable)
+
+  finally show ?thesis .
 qed
 
 lemma expectation_ranking_eq_random_linorder:

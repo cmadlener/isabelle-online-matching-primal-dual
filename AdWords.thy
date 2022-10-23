@@ -1006,7 +1006,7 @@ lemma dual_primal_times_adwords:
   using perm c_gt_1
   by (auto intro!: dual_primal_times_adwords' scalar_prod_right_zero dest: permutations_of_setD)
 
-lemma primal_almost_feasible_adwords_step:
+lemma primal_almost_feasible_aux_adwords_step:
   assumes "i \<in> L"
   assumes "j \<in> R"
   assumes "allocation s \<subseteq> G"
@@ -1133,7 +1133,7 @@ proof (induction js arbitrary: s)
     by (intro no_charge_over_budget_adwords_step) auto
 
   from Cons.prems have "{e \<in> allocation (adwords' s (j#js)). i \<in> e} = {e \<in> allocation (adwords_step s j). i \<in> e}"
-    by (subst adwords_Cons, intro Cons.IH primal_almost_feasible_adwords_step adwords_step_subgraph)
+    by (subst adwords_Cons, intro Cons.IH primal_almost_feasible_aux_adwords_step adwords_step_subgraph)
        (auto simp: edges_step)
 
   also from Cons.prems have "\<dots> = {e \<in> allocation s. i \<in> e}"
@@ -1183,13 +1183,13 @@ proof (induction js arbitrary: s)
       case over_budget_after_step
 
       with Cons.prems under_budget_before show ?thesis
-        by (simp only: adwords_Cons, intro Cons.IH adwords_step_subgraph primal_almost_feasible_adwords_step max_over_budget_adwords_step)
+        by (simp only: adwords_Cons, intro Cons.IH adwords_step_subgraph primal_almost_feasible_aux_adwords_step max_over_budget_adwords_step)
            (auto intro: finite_subset[where B = G])
     next
       case under_budget_after_step
       
       with Cons.prems show ?thesis
-        by (simp only: adwords_Cons, intro Cons.IH adwords_step_subgraph primal_almost_feasible_adwords_step)
+        by (simp only: adwords_Cons, intro Cons.IH adwords_step_subgraph primal_almost_feasible_aux_adwords_step)
            auto
     qed
   qed
