@@ -61,10 +61,10 @@ lemma ennreal_divide_one: "(x::ennreal) / 1 = x"
 lemma exp_minus_One_integral_indicator:
   fixes \<theta> :: real
   assumes "0 \<le> \<theta>" "\<theta> \<le> 1"
-  shows "\<integral>y. exp(y-1) * indicator {0..<\<theta>} y \<partial>uniform_measure lborel {0..1} = exp(\<theta>-1) - exp(-1)"
+  shows "\<integral>y. exp(y-1) * indicator {..<\<theta>} y \<partial>uniform_measure lborel {0..1} = exp(\<theta>-1) - exp(-1)"
     (is "?L = ?R")
 proof -
-  from \<open>\<theta> \<le> 1\<close> have interval_Int: "{0..<\<theta>} \<inter> {0..1} = {0..<\<theta>}"
+  from \<open>\<theta> \<le> 1\<close> have interval_Int: "{..<\<theta>} \<inter> {0..1} = {0..<\<theta>}"
     unfolding atLeastLessThan_def atLeastAtMost_def lessThan_def atMost_def
     by auto
 
@@ -74,10 +74,10 @@ proof -
   then have *: "\<integral>\<^sup>+x\<in>{0..<\<theta>}. f x \<partial>lborel = \<integral>\<^sup>+x\<in>{0..\<theta>}. f x \<partial>lborel" for f
     by (auto intro!: nn_integral_null_delta)
 
-  have "?L = enn2real (\<integral>\<^sup>+y. (exp(y-1) * indicator {0..<\<theta>} y) \<partial>uniform_measure lborel {0..1})"
+  have "?L = enn2real (\<integral>\<^sup>+y. (exp(y-1) * indicator {..<\<theta>} y) \<partial>uniform_measure lborel {0..1})"
     by (auto simp: integral_eq_nn_integral)
 
-  also have "\<dots> = enn2real (\<integral>\<^sup>+y. exp(y-1) * indicator {0..<\<theta>} y * indicator {0..1} y \<partial>lborel)"
+  also have "\<dots> = enn2real (\<integral>\<^sup>+y. exp(y-1) * indicator {..<\<theta>} y * indicator {0..1} y \<partial>lborel)"
     by (subst nn_integral_uniform_measure, measurable)
        (simp add: ennreal_divide_one ennreal_mult'' flip: ennreal_indicator)
 
