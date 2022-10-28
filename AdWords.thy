@@ -460,14 +460,15 @@ definition adwords_step :: "'a adwords_state \<Rightarrow> 'a \<Rightarrow> 'a a
   "adwords_step s j \<equiv> 
     let ns = {i. {i,j} \<in> G} in
     if ns \<noteq> {} \<and> j \<notin> Vs (allocation s)
-    then let i = arg_max_on (\<lambda>i. b {i, j} * (1 - (x s) i)) ns in
-      if (x s) i \<ge> 1 
-      then s
-      else \<lparr> 
-        allocation = insert {i,j} (allocation s),
-        x = (x s)(i := (x s) i * (1 + b {i, j} / B i) + b {i, j} / ((c-1) * B i)),
-        z = (z s)(j := b {i, j} * (1 - (x s) i))
-      \<rparr>
+    then
+      let i = arg_max_on (\<lambda>i. b {i, j} * (1 - (x s) i)) ns in
+        if (x s) i \<ge> 1 
+        then s
+        else \<lparr> 
+          allocation = insert {i,j} (allocation s),
+          x = (x s)(i := (x s) i * (1 + b {i, j} / B i) + b {i, j} / ((c-1) * B i)),
+          z = (z s)(j := b {i, j} * (1 - (x s) i))
+        \<rparr>
     else s"
 
 definition "adwords' s \<equiv> foldl adwords_step s"
@@ -533,6 +534,13 @@ qed (use assms in auto)
 lemma finite_bid_ratios:
   "finite {b {i, j} / B i |i j. {i, j} \<in> G \<and> i \<in> L \<and> j \<in> R}"
   by (auto intro!: finite_image_set2' intro: finite_subset[where B = "Vs G \<times> Vs G"] dest: edges_are_Vs)
+
+lemma finite_bids: "finite {b {i,j} |j. {i,j} \<in> G}"
+  by (auto intro!: finite_image_set intro: finite_subset dest: edges_are_Vs)
+
+lemma max_bid_pos: "i \<in> L \<Longrightarrow> Max {b {i, j} |j. {i, j} \<in> G} > 0"
+  by (subst Max_gr_iff)
+     (force intro: finite_bids elim: left_neighborE dest: bids_pos)+
 
 lemma bid_ratios_non_empty: "{b {i, j} / B i |i j. {i, j} \<in> G \<and> i \<in> L \<and> j \<in> R} \<noteq> {}"
   using graph_non_empty bipartite_graph
@@ -1087,7 +1095,7 @@ lemma max_over_budget_adwords_step:
   assumes finite_M: "finite (allocation s)"
   assumes under_budget_before: "total_bid_of (allocation s) i \<le> B i"
   assumes over_budget_after: "total_bid_of (allocation (adwords_step s j)) i > B i"
-  shows "total_bid_of (allocation (adwords_step s j)) i \<le> B i + Max {b e |e. e \<in> allocation (adwords_step s j) \<and> i \<in> e}"
+  shows "total_bid_of (allocation (adwords_step s j)) i \<le> B i + Max {b {i,j} |j. {i,j} \<in> G}"
   using \<open>j \<in> R\<close>
 proof (cases j rule: adwords_step_casesR[where s = s])
   case new_match
@@ -1112,8 +1120,8 @@ proof (cases j rule: adwords_step_casesR[where s = s])
     by (subst allocation_insert, simp only: \<open>?i' = i\<close>, subst total_bid_of_insert)
        (auto dest: edges_are_Vs)
 
-  also from finite_M under_budget_before have "\<dots> \<le> Max {b e |e. e \<in> allocation (adwords_step s j) \<and> i \<in> e} + B i"
-    by (auto intro!: add_mono Max_ge intro: finite_image_set simp: allocation_insert)
+  also from under_budget_before \<open>{?i',j} \<in> G\<close> have "\<dots> \<le> Max {b {i,j} |j. {i,j} \<in> G} + B i"
+    by (auto intro!: add_mono Max_ge intro: finite_bids simp: allocation_insert)
 
   finally show ?thesis
     by linarith
@@ -1146,9 +1154,9 @@ lemma max_over_budget_adwords':
   assumes "i \<in> L" "set js \<subseteq> R"
   assumes "allocation s \<subseteq> G"
   assumes "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (allocation s) i / B i) - 1) \<le> x s i"
-  assumes "total_bid_of (allocation s) i > B i \<Longrightarrow> total_bid_of (allocation s) i \<le> B i + Max {b e |e. e \<in> allocation s \<and> i \<in> e}"
+  assumes "total_bid_of (allocation s) i \<le> B i + Max {b {i,j} |j. {i,j} \<in> G}"
   assumes "total_bid_of (allocation (adwords' s js)) i > B i"
-  shows "total_bid_of (allocation (adwords' s js)) i \<le> B i + Max {b e |e. e \<in> allocation (adwords' s js) \<and> i \<in> e}"
+  shows "total_bid_of (allocation (adwords' s js)) i \<le> B i + Max {b {i,j} |j. {i,j} \<in> G}"
   using assms
 proof (induction js arbitrary: s)
   case (Cons j js)
@@ -1165,11 +1173,8 @@ proof (induction js arbitrary: s)
     then have "total_bid_of (allocation (adwords' s (j#js))) i = total_bid_of (allocation s) i"
       by simp
 
-    also from Cons.prems over_budget_before have "\<dots> \<le> B i + Max {b e |e. e \<in> allocation s \<and> i \<in> e}"
+    also from Cons.prems over_budget_before have "\<dots> \<le> B i + Max {b {i,j} |j. {i,j} \<in> G}"
       by blast
-
-    also from edges_eq have "\<dots> = B i + Max {b e |e. e \<in> allocation (adwords' s (j#js)) \<and> i \<in> e}"
-      by (metis (mono_tags, lifting) mem_Collect_eq)
 
     finally show ?thesis .
   next
@@ -1187,8 +1192,12 @@ proof (induction js arbitrary: s)
            (auto intro: finite_subset[where B = G])
     next
       case under_budget_after_step
+
+      from \<open>i \<in> L\<close> have "B i \<le> B i + Max {b {i,j} |j. {i,j} \<in> G}"
+        by (subst le_add_same_cancel1)
+           (auto dest: max_bid_pos)
       
-      with Cons.prems show ?thesis
+      with under_budget_after_step Cons.prems show ?thesis
         by (simp only: adwords_Cons, intro Cons.IH adwords_step_subgraph primal_almost_feasible_aux_adwords_step)
            auto
     qed
@@ -1198,35 +1207,30 @@ qed simp
 lemma max_over_budget_adwords:
   assumes "i \<in> L" "set js \<subseteq> R"
   assumes "total_bid_of (allocation (adwords js)) i > B i"
-  shows "total_bid_of (allocation (adwords js)) i \<le> B i + Max {b e |e. e \<in> allocation (adwords js) \<and> i \<in> e}"
+  shows "total_bid_of (allocation (adwords js)) i \<le> B i + Max {b {i,j} |j. {i,j} \<in> G}"
   using assms c_gt_1
-  by (auto intro!: max_over_budget_adwords' dest: budgets_pos)
+  by (force intro!: max_over_budget_adwords' intro: add_nonneg_nonneg dest: budgets_pos max_bid_pos)
 
 lemma adwords_charge_of_ge_total_bid_of:
   assumes "i \<in> L" "set js \<subseteq> R"
   shows "charge_of (allocation (adwords js)) i \<ge> (1 - R_max) * (total_bid_of (allocation (adwords js)) i)"
 proof (cases "total_bid_of (allocation (adwords js)) i > B i")
   case True
-  with \<open>i \<in> L\<close> have match: "{e. e \<in> allocation (adwords js) \<and> i \<in> e} \<noteq> {}"
-    using budgets_pos by fastforce
 
-  with True \<open>i \<in> L\<close> have "finite {b e |e. e \<in> allocation (adwords js) \<and> i \<in> e}" "{b e |e. e \<in> allocation (adwords js) \<and> i \<in> e} \<noteq> {}"
-    by (auto intro!: finite_image_set finite_subset[OF Collect_subset finite_subset[where B = G]] adwords_subgraph)
-
-  then obtain e where e: "e \<in> allocation (adwords js)" "i \<in> e" and [simp]: "Max {b e |e. e \<in> allocation (adwords js) \<and> i \<in> e} = b e"
-    using Max_in by auto
-
-  have "allocation (adwords js) \<subseteq> G"
+  have [intro!]: "allocation (adwords js) \<subseteq> G"
     by (auto intro!: adwords_subgraph)
 
-  with bipartite_graph have "bipartite (allocation (adwords js)) L R"
-    by (auto intro: bipartite_subgraph)
+  from \<open>i \<in> L\<close> parts_minimal have "finite {b {i,j} |j. {i,j} \<in> G}" "{b {i,j} |j. {i,j} \<in> G} \<noteq> {}"
+    by (auto intro: finite_bids elim: left_neighborE)
 
-  with e \<open>i \<in> L\<close> obtain j where [simp]: "e = {i,j}" "j \<in> R"
-    by (auto elim: bipartite_edgeE)
+  then obtain j where "{i,j} \<in> G" and [simp]: "Max {b {i,j} |j. {i,j} \<in> G} = b {i,j}"
+    using Max_in by auto
 
-  from \<open>i \<in> L\<close> e \<open>allocation (adwords js) \<subseteq> G\<close> have "total_bid_of (allocation (adwords js)) i * (1 - R_max) \<le>
-    total_bid_of (allocation (adwords js)) i * (B i / (B i + Max {b e |e. e \<in> allocation (adwords js) \<and> i \<in> e}))"
+  with bipartite_graph \<open>i \<in> L\<close> have "j \<in> R"
+    by (auto dest: bipartite_edgeD)
+
+  with \<open>{i,j} \<in> G\<close> \<open>i \<in> L\<close> have "total_bid_of (allocation (adwords js)) i * (1 - R_max) \<le>
+    total_bid_of (allocation (adwords js)) i * (B i / (B i + Max {b {i,j} |j. {i,j} \<in> G}))"
     by (intro mult_left_mono)
        (auto intro: budget_over_budget_plus_bid_ge)
 

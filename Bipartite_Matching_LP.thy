@@ -102,6 +102,23 @@ lemma bipartite_FalseD[dest]:  "x \<in> L \<Longrightarrow> x \<in> R \<Longrigh
   using bipartite_graph
   by (auto dest: bipartite_disjointD)
 
+lemma left_neighborE:
+  assumes "i \<in> L"
+  obtains j where "j \<in> R" "{i,j} \<in> G"
+proof -
+  assume *: "(\<And>j. j \<in> R \<Longrightarrow> {i, j} \<in> G \<Longrightarrow> thesis)"
+  from \<open>i \<in> L\<close> parts_minimal have "i \<in> Vs G" by blast
+
+  then obtain e where "e \<in> G" "i \<in> e"
+    by (auto elim: vs_member_elim)
+
+  with \<open>i \<in> L\<close> bipartite_graph obtain j where "e = {i,j}" "j \<in> R"
+    by (auto elim: bipartite_edgeE)
+
+  with \<open>e \<in> G\<close> show "thesis"
+    by (auto intro!: *)
+qed
+
 definition "n \<equiv> card (Vs G)"
 abbreviation "m \<equiv> card G"
 
