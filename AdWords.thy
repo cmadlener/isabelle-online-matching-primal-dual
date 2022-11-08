@@ -1155,7 +1155,6 @@ lemma max_over_budget_adwords':
   assumes "allocation s \<subseteq> G"
   assumes "\<And>i. i \<in> L \<Longrightarrow> 1/(c-1) * (c powr (total_bid_of (allocation s) i / B i) - 1) \<le> x s i"
   assumes "total_bid_of (allocation s) i \<le> B i + Max {b {i,j} |j. {i,j} \<in> G}"
-  assumes "total_bid_of (allocation (adwords' s js)) i > B i"
   shows "total_bid_of (allocation (adwords' s js)) i \<le> B i + Max {b {i,j} |j. {i,j} \<in> G}"
   using assms
 proof (induction js arbitrary: s)
@@ -1206,7 +1205,6 @@ qed simp
 
 lemma max_over_budget_adwords:
   assumes "i \<in> L" "set js \<subseteq> R"
-  assumes "total_bid_of (allocation (adwords js)) i > B i"
   shows "total_bid_of (allocation (adwords js)) i \<le> B i + Max {b {i,j} |j. {i,j} \<in> G}"
   using assms c_gt_1
   by (force intro!: max_over_budget_adwords' intro: add_nonneg_nonneg dest: budgets_pos max_bid_pos)
