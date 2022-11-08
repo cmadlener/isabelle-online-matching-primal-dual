@@ -228,4 +228,17 @@ proof (induction S arbitrary: y rule: finite_induct)
   qed
 qed blast
 
+subsection \<open>\<^term>\<open>\<pi> permutes A\<close>\<close>
+lemma refl_on_permutes: "refl_on A r \<Longrightarrow> \<pi> permutes A \<Longrightarrow> refl_on A {(x,y). x \<in> A \<and> y \<in> A \<and> (\<pi> x, \<pi> y) \<in> r}"
+  unfolding refl_on_def
+  by (auto simp: permutes_in_image)
+
+lemma trans_permutes: "trans r \<Longrightarrow> trans {(x,y). x \<in> A \<and> y \<in> A \<and> (\<pi> x, \<pi> y) \<in> r}"
+  unfolding trans_def
+  by auto
+
+lemma preorder_on_permutes: "preorder_on A r \<Longrightarrow> \<pi> permutes A \<Longrightarrow> preorder_on A {(x,y). x \<in> A \<and> y \<in> A \<and> (\<pi> x, \<pi> y) \<in> r}"
+  unfolding preorder_on_def
+  by (auto intro: refl_on_permutes trans_permutes)
+  
 end

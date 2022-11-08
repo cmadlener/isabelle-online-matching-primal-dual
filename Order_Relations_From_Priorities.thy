@@ -87,6 +87,177 @@ proof -
   qed
 qed
 
+text \<open>Adapted from @{thm almost_everywhere_linorder}\<close>
+lemma almost_everywhere_linorder_preorders: 
+  fixes a b :: real
+  assumes fin: "finite A" and ab: "a < b"
+  defines "M \<equiv> distr (\<Pi>\<^sub>M i \<in> A. uniform_measure lborel {a..b}) (count_space (preorders_on A)) (linorder_from_keys A)"
+  shows "AE R in M. linorder_on A R"
+proof -
+  define N where "N = PiM A (\<lambda>_. uniform_measure lborel {a..b})"
+  have [simp]: "sets (Pi\<^sub>M A (\<lambda>_. uniform_measure lborel {a..b})) = sets (PiM A (\<lambda>_. lborel))"
+    by (intro sets_PiM_cong) simp_all
+  let ?M_A = "(Pi\<^sub>M A (\<lambda>_. lborel :: real measure))"
+  have meas: "{h \<in> A \<rightarrow>\<^sub>E UNIV. h i = h j} \<in> sets ?M_A"
+    if [simp]: "i \<in> A" "j \<in> A" for i j
+  proof -
+    have "{h \<in> A \<rightarrow>\<^sub>E UNIV. h i = h j} = {h \<in> space ?M_A. h i = h j}"
+      by (auto simp: space_PiM)
+    also have "... \<in> sets ?M_A"
+      by measurable
+    finally show ?thesis .
+  qed
+  define X :: "('a \<Rightarrow> real) set" where "X = (\<Union>x\<in>A. \<Union>y\<in>A-{x}. {h\<in>A \<rightarrow>\<^sub>E UNIV. h x = h y})"
+  have "AE f in N. inj_on f A"
+  proof (rule AE_I)
+    show "{f \<in> space N. \<not> inj_on f A} \<subseteq> X"
+      by (auto simp: inj_on_def X_def space_PiM N_def)
+  next
+    show "X \<in> sets N" unfolding X_def N_def
+      using meas by (auto intro!: countable_finite fin sets.countable_UN')
+  next
+    have "emeasure N X \<le> (\<Sum>i\<in>A. emeasure N (\<Union>y\<in>A - {i}. {h \<in> A \<rightarrow>\<^sub>E UNIV. h i = h y}))"
+      unfolding X_def N_def using fin meas
+      by (intro emeasure_subadditive_finite) 
+         (auto simp: disjoint_family_on_def intro!: sets.countable_UN' countable_finite)
+    also have "\<dots> \<le> (\<Sum>i\<in>A. \<Sum>j\<in>A-{i}. emeasure N {h \<in> A \<rightarrow>\<^sub>E UNIV. h i = h j})"
+      unfolding N_def using fin meas
+      by (intro emeasure_subadditive_finite sum_mono) 
+         (auto simp: disjoint_family_on_def intro!: sets.countable_UN' countable_finite)
+    also have "\<dots> = (\<Sum>i\<in>A. \<Sum>j\<in>A-{i}. 0)" unfolding N_def using fin ab
+      by (intro sum.cong refl emeasure_PiM_diagonal) auto
+    also have "\<dots> = 0" by simp
+    finally show "emeasure N X = 0" by simp
+  qed
+  hence "AE f in N. linorder_on A (linorder_from_keys A f)"
+    by eventually_elim auto
+  with fin show ?thesis unfolding M_def N_def
+    by (subst AE_distr_iff) auto
+qed
+
+text \<open>Adapted from @{thm random_linorder_by_prios}\<close>
+lemma random_linorder_by_prios_preorders:
+  fixes a b :: real
+  assumes fin: "finite A" and ab: "a < b"
+  defines "M \<equiv> distr (\<Pi>\<^sub>M i \<in> A. uniform_measure lborel {a..b}) (count_space (preorders_on A)) (linorder_from_keys A)"
+  shows
+  "M = uniform_measure (count_space (preorders_on A)) (linorders_on A)"
+proof -
+  from linorders_finite_nonempty[OF fin] obtain R where R: "linorder_on A R"
+    by (auto simp: linorders_on_def)
+  
+  have *: "emeasure M {R} \<le> emeasure M {R'}" if "linorder_on A R" "linorder_on A R'" for R R'
+  proof -
+    define N where "N = PiM A (\<lambda>_. uniform_measure lborel {a..b})"
+    from linorder_permutation_exists[OF fin that]
+    obtain \<pi> where \<pi>: "\<pi> permutes A" "R' = map_relation A \<pi> R"
+      by blast
+    have "(\<lambda>f. f \<circ> \<pi>) \<in> Pi\<^sub>M A (\<lambda>_. lborel :: real measure) \<rightarrow>\<^sub>M Pi\<^sub>M A (\<lambda>_. lborel :: real measure)"
+      by (auto intro!: measurable_PiM_single' measurable_PiM_component_rev
+          simp: comp_def permutes_in_image[OF \<pi>(1)] space_PiM PiE_def extensional_def)
+    also have "\<dots> = N \<rightarrow>\<^sub>M Pi\<^sub>M A (\<lambda>_. lborel)"
+      unfolding N_def by (intro measurable_cong_sets refl sets_PiM_cong) simp_all
+    finally have [measurable]: "(\<lambda>f. f \<circ> \<pi>) \<in> \<dots>" .    
+        
+    have [simp]: "measurable N X = measurable (PiM A (\<lambda>_. lborel)) X" for X :: "('a \<times> 'a) set measure"
+      unfolding N_def by (intro measurable_cong_sets refl sets_PiM_cong) simp_all
+    have [simp]: "measurable M X = measurable (count_space (preorders_on A)) X" for X :: "('a \<times> 'a) set measure"
+      unfolding M_def by simp
+      
+    have M_eq: "M = distr N (count_space (preorders_on A)) (linorder_from_keys A)"
+      by (simp only: M_def N_def)
+    also have "N = distr N (PiM A (\<lambda>_. lborel)) (\<lambda>f. f \<circ> \<pi>)"
+      unfolding N_def by (rule PiM_uniform_measure_permute [symmetric]) fact+
+    also have "distr \<dots> (count_space (preorders_on A)) (linorder_from_keys A) = 
+                 distr N (count_space (preorders_on A)) (linorder_from_keys A \<circ> (\<lambda>f. f \<circ> \<pi>))"
+      using fin
+      by (intro distr_distr) measurable
+    also have "\<dots> = distr N (count_space (preorders_on A)) (map_relation A \<pi> \<circ> linorder_from_keys A)"
+      by (intro distr_cong refl) (auto simp: linorder_from_keys_permute[OF \<pi>(1)])
+    also have "\<dots> = distr M (count_space (preorders_on A)) (map_relation A \<pi>)"
+      unfolding M_eq
+      using fin \<pi>
+      by (intro distr_distr [symmetric])
+         (auto simp: map_relation_def intro!: preorder_on_permutes preorders_onI dest!: preorders_onD)
+    finally have M_eq': "distr M (count_space (preorders_on A)) (map_relation A \<pi>) = M" ..
+
+    from that have preorder: "R \<in> preorders_on A" "R' \<in> preorders_on A"
+      by (auto dest: linorder_on_imp_preorder_on)
+    hence "emeasure M {R} \<le> emeasure M (map_relation A \<pi> -` {R'} \<inter> space M)"
+      using preorder by (intro emeasure_mono) (auto simp: M_def \<pi> )
+    also have "\<dots> = emeasure (distr M (count_space (preorders_on A)) (map_relation A \<pi>)) {R'} "
+      by (rule emeasure_distr [symmetric])
+         (use preorder \<pi> in \<open>auto simp: map_relation_def intro!: preorders_onI preorder_on_permutes dest: preorders_onD\<close>)
+    also note M_eq'
+    finally show ?thesis .
+  qed
+  have same_prob: "emeasure M {R'} = emeasure M {R}" if "linorder_on A R'" for R'
+    using *[of R R'] and *[of R' R] and R and that by simp
+  
+  from ab fin have "prob_space M"
+    unfolding M_def
+    by (intro prob_space.prob_space_distr prob_space_PiM prob_space_uniform_measure) simp_all
+  hence "1 = emeasure M (preorders_on A)" 
+    using prob_space.emeasure_space_1[OF \<open>prob_space M\<close>] by (simp add: M_def)
+  also have "preorders_on A  = linorders_on A \<union> ((preorders_on A)-linorders_on A)"
+    by (auto simp: linorders_on_def linorder_on_def refl_on_def preorders_on_def preorder_on_def)
+  also have "emeasure M \<dots> = emeasure M (linorders_on A) + emeasure M ((preorders_on A)-linorders_on A)"
+    by (subst plus_emeasure) (auto simp: M_def linorders_on_def linorder_on_def refl_on_def preorders_on_def preorder_on_def)
+  also have "emeasure M ((preorders_on A)-linorders_on A) = 0" using almost_everywhere_linorder_preorders[OF fin ab]
+    by (subst (asm) AE_iff_measurable) (auto simp: linorders_on_def M_def)
+  also from fin have "emeasure M (linorders_on A) = (\<Sum>R'\<in>linorders_on A. emeasure M {R'})"
+    by (intro emeasure_eq_sum_singleton) 
+       (auto simp: M_def  linorders_on_def linorder_on_def refl_on_def preorders_on_def preorder_on_def)
+  also have "\<dots> = (\<Sum>R'\<in>linorders_on A. emeasure M {R})"
+    by (rule sum.cong) (simp_all add: linorders_on_def same_prob)
+  also from fin have "\<dots> = fact (card A) * emeasure M {R}"
+    by (simp add: linorders_on_def card_finite_linorders)
+  finally have [simp]: "emeasure M {R} = inverse (fact (card A))"
+    by (simp add: inverse_ennreal_unique)
+  
+  show ?thesis
+  proof (rule measure_eqI_countable_AE')
+    show "sets M = Pow (preorders_on A)"
+      by (simp add: M_def)
+  next
+    from \<open>finite A\<close> show "countable (linorders_on A)"
+      by (blast intro: countable_finite)
+  next
+    show "AE R in uniform_measure (count_space (preorders_on A)) 
+            (linorders_on A). R \<in> linorders_on A"
+      by (rule AE_uniform_measureI)
+         (auto simp: linorders_on_def preorders_on_def dest: linorder_on_imp_preorder_on)
+  next
+    fix R' assume R': "R' \<in> linorders_on A"
+    have subset: "linorders_on A \<subseteq> preorders_on A"
+      by (auto simp: linorders_on_def preorders_on_def dest: linorder_on_imp_preorder_on)
+    have "emeasure (uniform_measure (count_space (preorders_on A)) 
+           (linorders_on A)) {R'} = emeasure (count_space (preorders_on A)) (linorders_on A \<inter> {R'}) /
+                                      emeasure (count_space (preorders_on A)) (linorders_on A)"
+      using R' by (subst emeasure_uniform_measure) (auto simp: linorders_on_def preorders_on_def dest: linorder_on_imp_preorder_on)
+    also have "\<dots> = 1 / emeasure (count_space (preorders_on A)) (linorders_on A)"
+      using R' by (subst emeasure_count_space) (auto simp: linorders_on_def preorders_on_def dest: linorder_on_imp_preorder_on)
+    also have "\<dots> = 1 / fact (card A)"
+      using fin finite_linorders_on[of A]
+      by (subst emeasure_count_space [OF subset])
+         (auto simp: divide_ennreal [symmetric] linorders_on_def card_finite_linorders)
+    also have "\<dots> = emeasure M {R}"
+      by (simp add: field_simps divide_ennreal_def)
+    also have "\<dots> = emeasure M {R'}"
+      using R' by (intro same_prob [symmetric]) (auto simp: linorders_on_def)
+    finally show "emeasure M {R'} = emeasure (uniform_measure (count_space (preorders_on A)) 
+                    (linorders_on A)) {R'}" ..
+  next
+    show "linorders_on A \<subseteq> preorders_on A"
+      by (auto simp: linorders_on_def preorders_on_def dest: linorder_on_imp_preorder_on)
+  next
+    show "AE r in M. r \<in> linorders_on A"
+      unfolding M_def
+      using almost_everywhere_linorder_preorders[OF fin ab]
+      by (auto simp: linorders_on_def)
+  qed simp
+qed
+
 subsection \<open>Weighted Case\<close>
 definition weighted_linorder_from_keys :: "'a set \<Rightarrow> ('a \<Rightarrow> real) \<Rightarrow> (real \<Rightarrow> real) \<Rightarrow> ('a \<Rightarrow> real) \<Rightarrow> ('a \<times> 'a) set" where
   "weighted_linorder_from_keys A v g Y \<equiv> {(x,y) \<in> A \<times> A. v x * (1 - g(Y x)) \<ge> v y * (1 - g(Y y))}"

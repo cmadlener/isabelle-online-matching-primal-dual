@@ -39,7 +39,8 @@ definition dual_sol :: "('a \<Rightarrow> real) \<Rightarrow> 'a graph \<Rightar
   "dual_sol Y M \<equiv> vec n (\<lambda>k.
     if Vs_enum_inv k \<in> Vs M
     then
-      if k < card L then v (Vs_enum_inv k) * (g \<circ> Y) (Vs_enum_inv k) / F
+      if k < card L
+      then v (Vs_enum_inv k) * (g \<circ> Y) (Vs_enum_inv k) / F
       else v (THE l. {l, Vs_enum_inv k} \<in> M) * (1 - (g \<circ> Y) (THE l. {l, Vs_enum_inv k} \<in> M)) / F
     else 0
   )"
@@ -1557,6 +1558,11 @@ locale wf_ranking_order_prob = bipartite_vertex_priorities +
   assumes perm: "\<pi> \<in> permutations_of_set R"
 begin
 
+definition "ranking_prob_discrete \<equiv> do {
+    r \<leftarrow> uniform_measure (count_space (preorders_on L)) (linorders_on L);
+    return (count_space {M. M \<subseteq> G}) (ranking r G \<pi>)
+  }"
+
 abbreviation "v \<equiv> \<lambda>_. 1"
 
 sublocale bipartite_vertex_weighted_matching_lp L R G v
@@ -1566,12 +1572,41 @@ sublocale wf_vertex_weighted_online_bipartite_matching L R G v \<pi>
   using perm
   by unfold_locales auto
 
+
 lemma matching_value_eq_card: "matching_value M = card M"
   by simp
 
 lemma weighted_linorder_from_keys_eq_linorder_from_keys: "weighted_linorder_from_keys L v g Y = linorder_from_keys L Y"
   unfolding weighted_linorder_from_keys_def linorder_from_keys_def
   by auto
+
+lemma ranking_prob_eq_discrete: "ranking_prob = ranking_prob_discrete"
+proof -
+  have "ranking_prob = distr \<Y> (count_space {M. M \<subseteq> G}) (\<lambda>Y. ranking (linorder_from_keys L Y) G \<pi>)"
+    by (simp add: ranking_prob_distr weighted_linorder_from_keys_eq_linorder_from_keys)
+
+  also have "\<dots> = distr (distr \<Y> (count_space (preorders_on L)) (linorder_from_keys L)) (count_space {M. M \<subseteq> G}) (\<lambda>r. ranking r G \<pi>)"
+    by (subst distr_distr)
+       (use perm in \<open>auto simp: comp_def dest: preorders_onD permutations_of_setD intro: ranking_subgraph'\<close>)
+   
+  also have "\<dots> = distr (uniform_measure (count_space (preorders_on L)) (linorders_on L)) (count_space {M. M \<subseteq> G}) (\<lambda>r. ranking r G \<pi>)"
+    using finite_L
+    by (auto simp: random_linorder_by_prios_preorders)
+
+  also have "\<dots> = ranking_prob_discrete"
+    unfolding ranking_prob_discrete_def
+    apply (subst bind_return_distr')
+      apply auto
+    apply measurable
+    apply (use perm in \<open>auto dest: preorders_onD permutations_of_setD intro: ranking_subgraph'\<close>)
+    done
+
+  finally show ?thesis .
+qed
+
+sublocale ranking_prob_discrete_prob_space: prob_space ranking_prob_discrete
+  by (auto simp flip: ranking_prob_eq_discrete intro: ranking_prob_space.prob_space_axioms)
+
 
 lemma max_value_matching_iff_max_card_matching: "max_value_matching M \<longleftrightarrow> max_card_matching G M"
   unfolding max_value_matching_def max_card_matching_def
@@ -1604,6 +1639,13 @@ lemma ranking_F_competitive_random_linorder:
   using assms
   by (auto simp flip: expectation_ranking_eq_random_linorder intro: ranking_F_competitive_linorder_from_keys)
 
+lemma ranking_F_competitive_discrete:
+  assumes "G \<noteq> {}"
+  assumes "max_card_matching G M"
+
+  shows "ranking_prob_discrete_prob_space.expectation card / card M \<ge> F"
+  using assms
+  by (auto simp flip: ranking_prob_eq_discrete simp: max_value_matching_iff_max_card_matching dest!: ranking_prob_F_competitive)
 end
 
 theorem

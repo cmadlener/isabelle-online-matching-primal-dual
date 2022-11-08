@@ -35,7 +35,8 @@ definition dual_sol :: "('a \<Rightarrow> real) \<Rightarrow> 'a graph \<Rightar
   "dual_sol Y M \<equiv> vec n (\<lambda>k.
     if Vs_enum_inv k \<in> Vs M
     then
-      if k < card L then (g \<circ> Y) (Vs_enum_inv k) / F
+      if k < card L 
+      then (g \<circ> Y) (Vs_enum_inv k) / F
       else (1 - (g \<circ> Y) (THE l. {l, Vs_enum_inv k} \<in> M)) / F
     else 0
   )"
