@@ -8,9 +8,9 @@ sledgehammer_params [provers = cvc4 vampire verit e spass z3 zipperposition]
 
 definition step :: "('a \<times> 'a) set \<Rightarrow> 'a graph \<Rightarrow> 'a graph \<Rightarrow> 'a \<Rightarrow> 'a graph" where
   "step r G M j = (
-    let ns = {i. i \<notin> Vs M \<and> {i,j} \<in> G} in
+    let ns = {i. i \<notin> Vs M \<and> {i, j} \<in> G} in
       if ns \<noteq> {} \<and> j \<notin> Vs M
-      then let i = min_on_rel ns r in insert {i,j} M
+      then let i = min_on_rel ns r in insert {i, j} M
       else M
   )"
 
@@ -31,13 +31,13 @@ lemma finite_unmatched_neighbors[intro]:
 
 lemma step_cases[consumes 2, case_names no_neighbor j_matched new_match]:
   fixes G M j
-  defines "ns \<equiv> {i. i \<notin> Vs M \<and> {i,j} \<in> G}"
-  assumes "preorder_on' {i. {i,j} \<in> G} r" "finite (Vs G)"
-  assumes "{i. i \<notin> Vs M \<and> {i,j} \<in> G} = {} \<Longrightarrow> P"
+  defines "ns \<equiv> {i. i \<notin> Vs M \<and> {i, j} \<in> G}"
+  assumes "preorder_on' {i. {i,j} \<in> G} r" and "finite (Vs G)"
+  assumes "{i. i \<notin> Vs M \<and> {i, j} \<in> G} = {} \<Longrightarrow> P"
   assumes "j \<in> Vs M \<Longrightarrow> P"
   assumes 
     "\<lbrakk>ns \<noteq> {}; j \<notin> Vs M; min_on_rel ns r \<in> ns; 
-      \<not>(\<exists>i'\<in>ns. (i', min_on_rel ns r) \<in> r \<and> (min_on_rel ns r, i') \<notin> r)\<rbrakk> \<Longrightarrow> P"
+      \<not>(\<exists>i' \<in> ns. (i', min_on_rel ns r) \<in> r \<and> (min_on_rel ns r, i') \<notin> r)\<rbrakk> \<Longrightarrow> P"
   shows "P"
 proof (cases M j G rule: step_cases')
   case new_match
@@ -679,12 +679,12 @@ qed
 lemma dominance_order:
   assumes linorder: "linorder_on L r"
 
-  assumes "i \<in> L" "j \<in> R"
+  assumes "i \<in> L" and "j \<in> R"
   assumes "set js = R"
-  assumes "{i,j} \<in> G"
+  assumes "{i, j} \<in> G"
 
-  defines "i' \<equiv> (THE i'. {i',j} \<in> ranking r (G \<setminus> {i}) js)"
-  assumes "j \<in> Vs (ranking r (G \<setminus> {i}) js) \<Longrightarrow>  (i,i') \<in> r \<and> (i',i) \<notin> r"
+  defines "i' \<equiv> (THE i'. {i', j} \<in> ranking r (G \<setminus> {i}) js)"
+  assumes "j \<in> Vs (ranking r (G \<setminus> {i}) js) \<Longrightarrow>  (i, i') \<in> r \<and> (i', i) \<notin> r"
   shows "i \<in> Vs (ranking r G js)"
 proof (cases "j \<in> Vs (ranking r (G \<setminus> {i}) js)")
   case True
@@ -833,8 +833,8 @@ lemma monotonicity_order_matched_matched:
   shows "(i', i'') \<in> r"
   using assms
 proof -
-  from \<open>j \<in> set js\<close> \<open>distinct js\<close> obtain pre suff where js_decomp: "js = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
-    by (auto dest: split_list_distinct)
+  from \<open>j \<in> set js\<close> \<open>distinct js\<close> obtain pre suff where js_decomp: "js = pre @ j # suff"
+    by (auto dest: split_list)
 
   from \<open>j \<in> set js\<close> \<open>set js \<subseteq> R\<close> have "j \<in> R"
     by blast
@@ -845,7 +845,7 @@ proof -
   from js_decomp assms have "L - {i} - Vs ?ranking_pre' \<subseteq> L - Vs ?ranking_pre"
     by (intro monotonicity_order_ranking) auto
 
-  from linorder js_decomp \<open>set js \<subseteq> R\<close> \<open>j \<notin> Vs M\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
+  from linorder js_decomp \<open>distinct js\<close> \<open>set js \<subseteq> R\<close> \<open>j \<notin> Vs M\<close> have j_unmatched_pre: "j \<notin> Vs ?ranking_pre"
     by (intro unmatched_R_in_ranking_if)
        (auto dest: linorder_on_imp_preorder_on)
 
@@ -858,7 +858,7 @@ proof -
     then have "step r G ?ranking_pre j = ?ranking_pre"
       by (simp add: step_def)
 
-    with linorder j_unmatched_pre js_decomp \<open>set js \<subseteq> R\<close> have "j \<notin> Vs (ranking' r G M js)"
+    with linorder j_unmatched_pre js_decomp \<open>distinct js\<close> \<open>set js \<subseteq> R\<close> have "j \<notin> Vs (ranking' r G M js)"
       by (simp only: ranking_append ranking_Cons)
          (rule unmatched_R_in_ranking_if, auto dest: linorder_on_imp_preorder_on)
 
@@ -880,8 +880,7 @@ proof -
     by (auto intro: matching_partner_eqI matching_ranking dest: linorder_on_imp_preorder_on)
 
 
-
-  from linorder js_decomp \<open>set js \<subseteq> R\<close> \<open>j \<notin> Vs M'\<close> have j_unmatched_pre': "j \<notin> Vs ?ranking_pre'"
+  from linorder js_decomp \<open>distinct js\<close> \<open>set js \<subseteq> R\<close> \<open>j \<notin> Vs M'\<close> have j_unmatched_pre': "j \<notin> Vs ?ranking_pre'"
     by (intro unmatched_R_in_ranking_if)
        (auto dest: remove_vertices_subgraph' linorder_on_imp_preorder_on)
 
@@ -894,7 +893,7 @@ proof -
     then have "step r (G \<setminus> {i}) ?ranking_pre' j = ?ranking_pre'"
       by (simp add: step_def)
 
-    with linorder j_unmatched_pre' js_decomp \<open>set js \<subseteq> R\<close> have "j \<notin> Vs (ranking' r (G \<setminus> {i}) M' js)"
+    with linorder j_unmatched_pre' js_decomp \<open>distinct js\<close> \<open>set js \<subseteq> R\<close> have "j \<notin> Vs (ranking' r (G \<setminus> {i}) M' js)"
       by (simp only: ranking_append ranking_Cons)
          (rule unmatched_R_in_ranking_if, auto dest: linorder_on_imp_preorder_on remove_vertices_subgraph')
 
@@ -939,8 +938,8 @@ lemma online_matched_mono:
 proof -
   let ?M' = "ranking r (G \<setminus> {i}) \<pi>"
 
-  from perm \<open>j \<in> R\<close> obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
-    by (metis permutations_of_setD split_list_distinct)
+  from perm \<open>j \<in> R\<close> obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff"
+    by (metis permutations_of_setD(1) split_list)
 
   let ?ranking_pre = "ranking r G pre"
   let ?ranking_pre' = "ranking r (G \<setminus> {i}) pre"

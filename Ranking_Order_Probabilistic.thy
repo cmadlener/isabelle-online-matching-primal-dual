@@ -44,7 +44,7 @@ definition dual_sol :: "('a \<Rightarrow> real) \<Rightarrow> 'a graph \<Rightar
 definition y\<^sub>c :: "('a \<Rightarrow> real) \<Rightarrow> 'a list \<Rightarrow> 'a \<Rightarrow> 'a \<Rightarrow> real" where
   "y\<^sub>c Y js i j \<equiv>
     if j \<in> Vs (ranking (linorder_from_keys L Y) (G \<setminus> {i}) js)
-    then Y (THE i'. {i',j} \<in> ranking (linorder_from_keys L Y) (G \<setminus> {i}) js)
+    then Y (THE i'. {i', j} \<in> ranking (linorder_from_keys L Y) (G \<setminus> {i}) js)
     else 1"
 
 lemma g_nonnegI: "0 \<le> x \<Longrightarrow> x \<le> 1 \<Longrightarrow> 0 \<le> g x"
@@ -301,8 +301,8 @@ qed (simp add: y\<^sub>c_def)
 \<comment> \<open>Lemma 2 from DJK\<close>
 lemma dominance:
   assumes "linorder_on L (linorder_from_keys L Y)"
-  assumes "i \<in> L" "j \<in> R"
-  assumes "{i,j} \<in> G"
+  assumes "i \<in> L" and "j \<in> R"
+  assumes "{i, j} \<in> G"
 
   assumes "Y i < y\<^sub>c Y \<pi> i j"
   shows "i \<in> Vs (ranking (linorder_from_keys L Y) G \<pi>)"
@@ -317,8 +317,8 @@ qed (use assms in auto)
 lemma monotonicity:
   assumes linorder: "linorder_on L (linorder_from_keys L Y)"
   assumes "Y \<in> L \<rightarrow> {0..1}"
-  assumes "i \<in> L" "j \<in> R"
-  assumes "{i,j} \<in> G"
+  assumes "i \<in> L" and "j \<in> R"
+  assumes "{i, j} \<in> G"
 
   shows "dual_sol Y (ranking (linorder_from_keys L Y) G \<pi>) $ Vs_enum j \<ge> (1 - g (y\<^sub>c Y \<pi> i j)) / F"
     (is "dual_sol Y ?M $ ?j \<ge> ?\<beta>")
@@ -453,17 +453,17 @@ sublocale ranking_prob_space: prob_space ranking_prob
 lemma online_matched_with_borel_iff:
   fixes Y :: "'a \<Rightarrow> real" and X :: "'a set"
   defines "r \<equiv> linorder_from_keys (L - X) Y"
-  assumes "j \<in> R" "A \<in> sets borel"
+  assumes "j \<in> R" and "A \<in> sets borel"
 
   \<comment> \<open>should we lift this assumption (since it is always true)? would need to use \<^term>\<open>takeWhile (\<lambda>x. x \<noteq> j)\<close>
       and \<^term>\<open>dropWhile\<close> in statement\<close>
-  assumes \<pi>_decomp: "\<pi> = \<pi>' @ j # \<pi>''" "j \<notin> set \<pi>'" "j \<notin> set \<pi>''"
+  assumes \<pi>_decomp: "\<pi> = \<pi>' @ j # \<pi>''"
   defines "M' \<equiv> ranking r (G \<setminus> X) \<pi>'"
 
-  shows "j \<in> Vs (ranking r (G \<setminus> X) \<pi>) \<and> Y (THE i. {i,j} \<in> ranking r (G \<setminus> X) \<pi>) \<in> A
-    \<longleftrightarrow> (\<exists>i\<in>{i. {i,j} \<in> G \<setminus> X}. i \<notin> Vs M' \<and> Y i \<in> A \<and>
-          (\<forall>i'\<in>{i. {i,j} \<in> G \<setminus> X}. i' \<notin> Vs M' \<longrightarrow> Y i \<le> Y i'))"
-  (is "j \<in> Vs ?M \<and> Y (THE i. {i,j} \<in> ?M) \<in> A \<longleftrightarrow> ?F")
+  shows "j \<in> Vs (ranking r (G \<setminus> X) \<pi>) \<and> Y (THE i. {i, j} \<in> ranking r (G \<setminus> X) \<pi>) \<in> A
+    \<longleftrightarrow> (\<exists>i\<in>{i. {i, j} \<in> G \<setminus> X}. i \<notin> Vs M' \<and> Y i \<in> A \<and>
+          (\<forall>i'\<in>{i. {i, j} \<in> G \<setminus> X}. i' \<notin> Vs M' \<longrightarrow> Y i \<le> Y i'))"
+  (is "j \<in> Vs ?M \<and> Y (THE i. {i, j} \<in> ?M) \<in> A \<longleftrightarrow> ?F")
 proof
   assume j_matched: "j \<in> Vs ?M \<and> Y (THE i. {i,j} \<in> ?M) \<in> A"
   let ?i = "min_on_rel {i. i \<notin> Vs M' \<and> {i,j} \<in> G \<setminus> X} r"
@@ -615,8 +615,8 @@ lemma dual_component_online_in_sets:
   shows  "{Y \<in> space (\<Pi>\<^sub>M i \<in> (L - X).  \<U>). j \<in> Vs (ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>) \<and> 
     Y (THE l. {l, j} \<in> ranking (linorder_from_keys (L - X) Y) (G \<setminus> X) \<pi>) \<in> A} \<in> sets (\<Pi>\<^sub>M i \<in> (L - X). \<U>)"
 proof -
-  from \<open>j \<in> R\<close> perm obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
-    by (metis permutations_of_setD split_list_distinct)
+  from \<open>j \<in> R\<close> perm obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff"
+    by (auto simp flip: set_\<pi> dest: split_list)
 
   with set_\<pi> have set_pre: "set pre \<subseteq> R"
     by auto

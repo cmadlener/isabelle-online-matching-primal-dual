@@ -4,30 +4,6 @@ theory Bipartite_Matching_LP
     LP_Duality.Move_To_Matrix
 begin
 
-\<comment> \<open>TODO: find a better place for this\<close>
-lemma split_list_distinct:
-  assumes "distinct xs"
-  assumes "x \<in> set xs"
-  shows "\<exists>ys zs. xs = ys @ x # zs \<and> x \<notin> set ys \<and> x \<notin> set zs"
-  using assms
-proof (induction xs)
-  case Nil
-  then show ?case
-    by simp
-next
-  case (Cons a xs)
-  show ?case
-  proof cases
-    assume "x = a"
-    with Cons show ?case
-      by fastforce
-  next
-    assume "x \<noteq> a"
-    with Cons show ?case
-      by (fastforce intro!: Cons_eq_appendI)
-  qed
-qed
-
 definition one_vec :: "nat \<Rightarrow> 'a :: one vec" ("1\<^sub>v") where
   "1\<^sub>v n \<equiv> vec n (\<lambda>i. 1)"
 

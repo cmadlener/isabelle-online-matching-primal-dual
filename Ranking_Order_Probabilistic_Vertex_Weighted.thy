@@ -49,7 +49,7 @@ definition y\<^sub>c :: "('a \<Rightarrow> real) \<Rightarrow> 'a list \<Rightar
   "y\<^sub>c Y js i j \<equiv>
     if j \<in> Vs (ranking (weighted_linorder_from_keys L v g Y) (G \<setminus> {i}) js)
     then
-      let i' = (THE i'. {i',j} \<in> ranking (weighted_linorder_from_keys L v g Y) (G \<setminus> {i}) js) in
+      let i' = (THE i'. {i', j} \<in> ranking (weighted_linorder_from_keys L v g Y) (G \<setminus> {i}) js) in
       \<comment> \<open>intuitively, \<^term>\<open>i\<close> will only ever get matched if it has large enough value compared to \<^term>\<open>i'\<close> (depending on \<^term>\<open>Y i'\<close>)\<close>
       if 1 - v i' * (1 - g (Y i')) / v i > exp(-1)
       then ln (1 - v i' * (1 - g (Y i')) / v i) + 1
@@ -388,8 +388,8 @@ qed (use assms in auto)
 lemma monotonicity:
   assumes linorder: "linorder_on L (weighted_linorder_from_keys L v g Y)"
   assumes "Y \<in> L \<rightarrow> {0..1}"
-  assumes "i \<in> L" "j \<in> R"
-  assumes "{i,j} \<in> G"
+  assumes "i \<in> L" and "j \<in> R"
+  assumes "{i, j} \<in> G"
 
   shows "dual_sol Y (ranking (weighted_linorder_from_keys L v g Y) G \<pi>) $ Vs_enum j \<ge> v i * (1 - g (y\<^sub>c Y \<pi> i j)) / F"
     (is "dual_sol Y ?M $ ?j \<ge> ?\<beta>")
@@ -542,7 +542,7 @@ lemma online_matched_with_borel_iff:
 
   \<comment> \<open>should we lift this assumption (since it is always true)? would need to use \<^term>\<open>takeWhile (\<lambda>x. x \<noteq> j)\<close>
       and \<^term>\<open>dropWhile\<close> in statement\<close>
-  assumes \<pi>_decomp: "\<pi> = \<pi>' @ j # \<pi>''" "j \<notin> set \<pi>'" "j \<notin> set \<pi>''"
+  assumes \<pi>_decomp: "\<pi> = \<pi>' @ j # \<pi>''"
   defines "M' \<equiv> ranking r (G \<setminus> X) \<pi>'"
 
   shows "j \<in> Vs (ranking r (G \<setminus> X) \<pi>) \<and> v (THE i. {i,j} \<in> ranking r (G \<setminus> X) \<pi>) * (1 - g(Y (THE i. {i,j} \<in> ranking r (G \<setminus> X) \<pi>))) \<in> A
@@ -702,8 +702,8 @@ lemma dual_component_online_in_sets:
               (1 - g(Y (THE l. {l, j} \<in> ranking (weighted_linorder_from_keys (L - X) v g Y) (G \<setminus> X) \<pi>))) \<in> A}
     \<in> sets (\<Pi>\<^sub>M i \<in> L - X. \<U>)"
 proof -
-  from \<open>j \<in> R\<close> perm obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
-    by (metis permutations_of_setD split_list_distinct)
+  from \<open>j \<in> R\<close> perm obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff"
+    by (auto dest: split_list simp flip: set_\<pi>)
 
   with set_\<pi> have set_pre: "set pre \<subseteq> R"
     by auto

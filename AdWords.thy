@@ -458,14 +458,14 @@ definition "c \<equiv> (1 + R_max) powr (1 / R_max)"
 
 definition adwords_step :: "'a adwords_state \<Rightarrow> 'a \<Rightarrow> 'a adwords_state" where
   "adwords_step s j \<equiv> 
-    let ns = {i. {i,j} \<in> G} in
+    let ns = {i. {i, j} \<in> G} in
     if ns \<noteq> {} \<and> j \<notin> Vs (allocation s)
     then
       let i = arg_max_on (\<lambda>i. b {i, j} * (1 - (x s) i)) ns in
         if (x s) i \<ge> 1 
         then s
         else \<lparr> 
-          allocation = insert {i,j} (allocation s),
+          allocation = insert {i, j} (allocation s),
           x = (x s)(i := (x s) i * (1 + b {i, j} / B i) + b {i, j} / ((c-1) * B i)),
           z = (z s)(j := b {i, j} * (1 - (x s) i))
         \<rparr>
@@ -487,11 +487,11 @@ lemma adwords_step_cases[case_names no_neighbor j_matched no_budget new_match]:
   fixes j s
   defines "i \<equiv> arg_max_on (\<lambda>i. b {i,j} * (1 - x s i)) {i. {i,j} \<in> G}"
 
-  assumes "{i. {i,j} \<in> G} = {} \<Longrightarrow> P"
+  assumes "{i. {i, j} \<in> G} = {} \<Longrightarrow> P"
   assumes "j \<in> Vs (allocation s) \<Longrightarrow> P"
   assumes "x s i \<ge> 1 \<Longrightarrow> P"
-  assumes "\<lbrakk> j \<notin> Vs (allocation s); {i,j} \<in> G; x s i < 1; {i. {i,j} \<in> G} \<noteq> {}; \<comment> \<open>keep this redundant assumption for simplification\<close>
-    \<not>(\<exists>i'\<in>{i. {i,j} \<in> G}. b {i',j} * (1 - x s i') > b {i,j} * (1 - x s i)) \<rbrakk> \<Longrightarrow> P"
+  assumes "\<lbrakk> j \<notin> Vs (allocation s); {i, j} \<in> G; x s i < 1; {i. {i, j} \<in> G} \<noteq> {}; \<comment> \<open>keep this redundant assumption for simplification\<close>
+    \<not>(\<exists>i' \<in> {i. {i, j} \<in> G}. b {i',j} * (1 - x s i') > b {i, j} * (1 - x s i)) \<rbrakk> \<Longrightarrow> P"
   shows P
 proof -
   consider "{i. {i,j} \<in> G} = {}" | "j \<in> Vs (allocation s)" | "x s i \<ge> 1" | "{i. {i,j} \<in> G} \<noteq> {} \<and> j \<notin> Vs (allocation s) \<and> x s i < 1"
@@ -765,8 +765,8 @@ proof (cases "x (adwords \<pi>) i \<ge> 1")
 next
   case False
 
-  from perm \<open>j \<in> R\<close> obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff" "j \<notin> set pre" "j \<notin> set suff"
-    by (metis permutations_of_setD split_list_distinct)
+  from perm \<open>j \<in> R\<close> obtain pre suff where \<pi>_decomp: "\<pi> = pre @ j # suff"
+    by (metis permutations_of_setD(1) split_list)
 
   with perm have set_pre: "set pre \<subseteq> R" and set_suff: "set suff \<subseteq> R"
     by (auto dest: permutations_of_setD)
@@ -779,8 +779,8 @@ next
     with \<open>{i,j} \<in> G\<close> show ?thesis by blast
   next
     case j_matched
-    from \<pi>_decomp set_pre \<open>j \<in> R\<close> have "j \<notin> Vs (allocation (adwords pre))"
-      by (intro unmatched_R_in_adwords_if) auto
+    from \<pi>_decomp set_pre perm \<open>j \<in> R\<close> have "j \<notin> Vs (allocation (adwords pre))"
+      by (intro unmatched_R_in_adwords_if) (auto dest: permutations_of_setD)
 
     with j_matched show ?thesis by blast
   next
@@ -823,6 +823,9 @@ next
     case new_match
     with \<open>{i,j} \<in> G\<close> have z_step: "z (adwords_step (adwords pre) j) j = b {?i',j} * (1 - x (adwords pre) ?i')"
       by (auto simp: adwords_step_def Let_def)
+
+    from perm \<pi>_decomp have "j \<notin> set suff"
+      by (auto dest: permutations_of_setD)
 
     have "b {i,j} = b {i,j} * x (adwords pre) i + b {i,j} * (1 - x (adwords pre) i)"
       by argo
