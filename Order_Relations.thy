@@ -146,8 +146,9 @@ lemma min_if_finite':
 
 lemma min_if_finite:
   assumes "preorder_on' S r"
-  assumes "finite S" "S \<noteq> {}"
-  shows "min_on_rel S r \<in> S" and "\<not>(\<exists>x\<in>S. (x, min_on_rel S r) \<in> r \<and> (min_on_rel S r, x) \<notin> r)"
+  assumes "finite S" and "S \<noteq> {}"
+  shows "min_on_rel S r \<in> S"
+    and "\<not>(\<exists>x\<in>S. (x, min_on_rel S r) \<in> r \<and> (min_on_rel S r, x) \<notin> r)"
   using assms min_if_finite' by force+
 
 lemma min_rel_linorder_eq:

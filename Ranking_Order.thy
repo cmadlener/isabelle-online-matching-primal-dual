@@ -437,7 +437,7 @@ qed
 lemma ranking_remove_unmatched_eq:
   assumes linorder: "linorder_on L r"
 
-  assumes "i \<in> L" "set js \<subseteq> R"
+  assumes "i \<in> L" and "set js \<subseteq> R"
   assumes "i \<notin> Vs (ranking' r G M js)"
   shows "ranking' r (G \<setminus> {i}) M js = ranking' r G M js"
   using assms
