@@ -15,7 +15,7 @@ locale wf_ranking_order_prob = bipartite_vertex_priorities +
   assumes perm: "\<pi> \<in> permutations_of_set R"
 
   assumes g_funcset: "g \<in> {0..1} \<rightarrow> {0..1}"
-  assumes g_mono: "mono_on g {0..1}"
+  assumes g_mono: "mono_on {0..1} g"
   assumes g_One: "g 1 = 1"
   assumes g_borel[measurable]: "g \<in> borel_measurable borel"
 

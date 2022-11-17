@@ -1,7 +1,7 @@
 theory Bipartite_Matching_LP
   imports
     More_Graph
-    LP_Duality.Move_To_Matrix
+    Jordan_Normal_Form.Matrix
 begin
 
 definition one_vec :: "nat \<Rightarrow> 'a :: one vec" ("1\<^sub>v") where
